@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
-project(mesh-agent-native)
+project(ctest C)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_C_STANDARD 11)
 
-add_executable(cpptest main.cpp)
+add_executable(mesh-agent-native main.c)

@@ -6,7 +6,7 @@
 
 #IncludeRegexTransform: 
 
-/Users/ch/code/alibaba/mesh-agent-native/main.cpp
-iostream
+/Users/ch/code/alibaba/mesh-agent-native/main.c
+stdio.h
 -
 

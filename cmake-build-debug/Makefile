@@ -111,44 +111,44 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named cpptest
+# Target rules for targets named mesh-agent-native
 
 # Build rule for target.
-cpptest: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 cpptest
-.PHONY : cpptest
+mesh-agent-native: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 mesh-agent-native
+.PHONY : mesh-agent-native
 
 # fast build rule for target.
-cpptest/fast:
-	$(MAKE) -f CMakeFiles/cpptest.dir/build.make CMakeFiles/cpptest.dir/build
-.PHONY : cpptest/fast
+mesh-agent-native/fast:
+	$(MAKE) -f CMakeFiles/mesh-agent-native.dir/build.make CMakeFiles/mesh-agent-native.dir/build
+.PHONY : mesh-agent-native/fast
 
-main.o: main.cpp.o
+main.o: main.c.o
 
 .PHONY : main.o
 
 # target to build an object file
-main.cpp.o:
-	$(MAKE) -f CMakeFiles/cpptest.dir/build.make CMakeFiles/cpptest.dir/main.cpp.o
-.PHONY : main.cpp.o
+main.c.o:
+	$(MAKE) -f CMakeFiles/mesh-agent-native.dir/build.make CMakeFiles/mesh-agent-native.dir/main.c.o
+.PHONY : main.c.o
 
-main.i: main.cpp.i
+main.i: main.c.i
 
 .PHONY : main.i
 
 # target to preprocess a source file
-main.cpp.i:
-	$(MAKE) -f CMakeFiles/cpptest.dir/build.make CMakeFiles/cpptest.dir/main.cpp.i
-.PHONY : main.cpp.i
+main.c.i:
+	$(MAKE) -f CMakeFiles/mesh-agent-native.dir/build.make CMakeFiles/mesh-agent-native.dir/main.c.i
+.PHONY : main.c.i
 
-main.s: main.cpp.s
+main.s: main.c.s
 
 .PHONY : main.s
 
 # target to generate assembly for a file
-main.cpp.s:
-	$(MAKE) -f CMakeFiles/cpptest.dir/build.make CMakeFiles/cpptest.dir/main.cpp.s
-.PHONY : main.cpp.s
+main.c.s:
+	$(MAKE) -f CMakeFiles/mesh-agent-native.dir/build.make CMakeFiles/mesh-agent-native.dir/main.c.s
+.PHONY : main.c.s
 
 # Help Target
 help:
@@ -158,7 +158,7 @@ help:
 	@echo "... depend"
 	@echo "... rebuild_cache"
 	@echo "... edit_cache"
-	@echo "... cpptest"
+	@echo "... mesh-agent-native"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
