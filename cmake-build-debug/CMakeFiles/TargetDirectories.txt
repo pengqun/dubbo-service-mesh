@@ -1,3 +1,0 @@
-/Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles/edit_cache.dir
-/Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles/main.c.dir
