@@ -1,6 +1,6 @@
 
-BIN  := agent
-SRC  := main.c etcd.c
+BIN  := mesh-agent
+SRC  := main.c etcd.c log.c
 
 ODIR := obj
 OBJ  := $(patsubst %.c,$(ODIR)/%.o,$(SRC))

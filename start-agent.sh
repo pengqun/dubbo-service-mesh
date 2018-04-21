@@ -1,8 +1,11 @@
 #!/bin/bash
 
 ETCD_HOST=$(ip addr show docker0 | grep 'inet\b' | awk '{print $2}' | cut -d '/' -f 1)
+if [[ -z $ETCD_HOST ]]; then
+  ETCD_HOST=host.docker.internal
+fi
 ETCD_PORT=2379
-ETCD_URL=http://$ETCD_HOST:$ETCD_PORT
+ETCD_URL=$ETCD_HOST:$ETCD_PORT
 
 echo ETCD_URL = $ETCD_URL
 
