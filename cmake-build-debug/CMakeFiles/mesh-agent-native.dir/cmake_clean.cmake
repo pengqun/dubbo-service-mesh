@@ -1,5 +1,6 @@
 file(REMOVE_RECURSE
   "CMakeFiles/mesh-agent-native.dir/main.c.o"
+  "CMakeFiles/mesh-agent-native.dir/etcd.c.o"
   "mesh-agent-native.pdb"
   "mesh-agent-native"
 )

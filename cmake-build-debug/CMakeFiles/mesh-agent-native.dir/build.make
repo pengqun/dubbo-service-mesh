@@ -43,10 +43,10 @@ RM = /Applications/CLion.app/Contents/bin/cmake/bin/cmake -E remove -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/ch/code/alibaba/mesh-agent-native
+CMAKE_SOURCE_DIR = /Users/ch/code/tianchi/mesh-agent-native
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug
+CMAKE_BINARY_DIR = /Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug
 
 # Include any dependencies generated for this target.
 include CMakeFiles/mesh-agent-native.dir/depend.make
@@ -59,16 +59,16 @@ include CMakeFiles/mesh-agent-native.dir/flags.make
 
 CMakeFiles/mesh-agent-native.dir/main.c.o: CMakeFiles/mesh-agent-native.dir/flags.make
 CMakeFiles/mesh-agent-native.dir/main.c.o: ../main.c
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/mesh-agent-native.dir/main.c.o"
-	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -o CMakeFiles/mesh-agent-native.dir/main.c.o   -c /Users/ch/code/alibaba/mesh-agent-native/main.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/mesh-agent-native.dir/main.c.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -o CMakeFiles/mesh-agent-native.dir/main.c.o   -c /Users/ch/code/tianchi/mesh-agent-native/main.c
 
 CMakeFiles/mesh-agent-native.dir/main.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/mesh-agent-native.dir/main.c.i"
-	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /Users/ch/code/alibaba/mesh-agent-native/main.c > CMakeFiles/mesh-agent-native.dir/main.c.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /Users/ch/code/tianchi/mesh-agent-native/main.c > CMakeFiles/mesh-agent-native.dir/main.c.i
 
 CMakeFiles/mesh-agent-native.dir/main.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/mesh-agent-native.dir/main.c.s"
-	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /Users/ch/code/alibaba/mesh-agent-native/main.c -o CMakeFiles/mesh-agent-native.dir/main.c.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /Users/ch/code/tianchi/mesh-agent-native/main.c -o CMakeFiles/mesh-agent-native.dir/main.c.s
 
 CMakeFiles/mesh-agent-native.dir/main.c.o.requires:
 
@@ -81,17 +81,43 @@ CMakeFiles/mesh-agent-native.dir/main.c.o.provides: CMakeFiles/mesh-agent-native
 CMakeFiles/mesh-agent-native.dir/main.c.o.provides.build: CMakeFiles/mesh-agent-native.dir/main.c.o
 
 
+CMakeFiles/mesh-agent-native.dir/etcd.c.o: CMakeFiles/mesh-agent-native.dir/flags.make
+CMakeFiles/mesh-agent-native.dir/etcd.c.o: ../etcd.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/mesh-agent-native.dir/etcd.c.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -o CMakeFiles/mesh-agent-native.dir/etcd.c.o   -c /Users/ch/code/tianchi/mesh-agent-native/etcd.c
+
+CMakeFiles/mesh-agent-native.dir/etcd.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/mesh-agent-native.dir/etcd.c.i"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /Users/ch/code/tianchi/mesh-agent-native/etcd.c > CMakeFiles/mesh-agent-native.dir/etcd.c.i
+
+CMakeFiles/mesh-agent-native.dir/etcd.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/mesh-agent-native.dir/etcd.c.s"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /Users/ch/code/tianchi/mesh-agent-native/etcd.c -o CMakeFiles/mesh-agent-native.dir/etcd.c.s
+
+CMakeFiles/mesh-agent-native.dir/etcd.c.o.requires:
+
+.PHONY : CMakeFiles/mesh-agent-native.dir/etcd.c.o.requires
+
+CMakeFiles/mesh-agent-native.dir/etcd.c.o.provides: CMakeFiles/mesh-agent-native.dir/etcd.c.o.requires
+	$(MAKE) -f CMakeFiles/mesh-agent-native.dir/build.make CMakeFiles/mesh-agent-native.dir/etcd.c.o.provides.build
+.PHONY : CMakeFiles/mesh-agent-native.dir/etcd.c.o.provides
+
+CMakeFiles/mesh-agent-native.dir/etcd.c.o.provides.build: CMakeFiles/mesh-agent-native.dir/etcd.c.o
+
+
 # Object files for target mesh-agent-native
 mesh__agent__native_OBJECTS = \
-"CMakeFiles/mesh-agent-native.dir/main.c.o"
+"CMakeFiles/mesh-agent-native.dir/main.c.o" \
+"CMakeFiles/mesh-agent-native.dir/etcd.c.o"
 
 # External object files for target mesh-agent-native
 mesh__agent__native_EXTERNAL_OBJECTS =
 
 mesh-agent-native: CMakeFiles/mesh-agent-native.dir/main.c.o
+mesh-agent-native: CMakeFiles/mesh-agent-native.dir/etcd.c.o
 mesh-agent-native: CMakeFiles/mesh-agent-native.dir/build.make
 mesh-agent-native: CMakeFiles/mesh-agent-native.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking C executable mesh-agent-native"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking C executable mesh-agent-native"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/mesh-agent-native.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -100,6 +126,7 @@ CMakeFiles/mesh-agent-native.dir/build: mesh-agent-native
 .PHONY : CMakeFiles/mesh-agent-native.dir/build
 
 CMakeFiles/mesh-agent-native.dir/requires: CMakeFiles/mesh-agent-native.dir/main.c.o.requires
+CMakeFiles/mesh-agent-native.dir/requires: CMakeFiles/mesh-agent-native.dir/etcd.c.o.requires
 
 .PHONY : CMakeFiles/mesh-agent-native.dir/requires
 
@@ -108,6 +135,6 @@ CMakeFiles/mesh-agent-native.dir/clean:
 .PHONY : CMakeFiles/mesh-agent-native.dir/clean
 
 CMakeFiles/mesh-agent-native.dir/depend:
-	cd /Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/ch/code/alibaba/mesh-agent-native /Users/ch/code/alibaba/mesh-agent-native /Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug /Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug /Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug/CMakeFiles/mesh-agent-native.dir/DependInfo.cmake --color=$(COLOR)
+	cd /Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/ch/code/tianchi/mesh-agent-native /Users/ch/code/tianchi/mesh-agent-native /Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug /Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug /Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles/mesh-agent-native.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/mesh-agent-native.dir/depend
 

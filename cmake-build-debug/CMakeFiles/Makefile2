@@ -54,45 +54,45 @@ RM = /Applications/CLion.app/Contents/bin/cmake/bin/cmake -E remove -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/ch/code/alibaba/mesh-agent-native
+CMAKE_SOURCE_DIR = /Users/ch/code/tianchi/mesh-agent-native
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug
+CMAKE_BINARY_DIR = /Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug
 
 #=============================================================================
-# Target rules for target CMakeFiles/mesh-agent-native.dir
+# Target rules for target CMakeFiles/main.c.dir
 
 # All Build rule for target.
-CMakeFiles/mesh-agent-native.dir/all:
-	$(MAKE) -f CMakeFiles/mesh-agent-native.dir/build.make CMakeFiles/mesh-agent-native.dir/depend
-	$(MAKE) -f CMakeFiles/mesh-agent-native.dir/build.make CMakeFiles/mesh-agent-native.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug/CMakeFiles --progress-num=1,2 "Built target mesh-agent-native"
-.PHONY : CMakeFiles/mesh-agent-native.dir/all
+CMakeFiles/main.c.dir/all:
+	$(MAKE) -f CMakeFiles/main.c.dir/build.make CMakeFiles/main.c.dir/depend
+	$(MAKE) -f CMakeFiles/main.c.dir/build.make CMakeFiles/main.c.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles --progress-num=1,2 "Built target main.c"
+.PHONY : CMakeFiles/main.c.dir/all
 
 # Include target in all.
-all: CMakeFiles/mesh-agent-native.dir/all
+all: CMakeFiles/main.c.dir/all
 
 .PHONY : all
 
 # Build rule for subdir invocation for target.
-CMakeFiles/mesh-agent-native.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug/CMakeFiles 2
-	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/mesh-agent-native.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/ch/code/alibaba/mesh-agent-native/cmake-build-debug/CMakeFiles 0
-.PHONY : CMakeFiles/mesh-agent-native.dir/rule
+CMakeFiles/main.c.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles 2
+	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/main.c.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/ch/code/tianchi/mesh-agent-native/cmake-build-debug/CMakeFiles 0
+.PHONY : CMakeFiles/main.c.dir/rule
 
 # Convenience name for target.
-mesh-agent-native: CMakeFiles/mesh-agent-native.dir/rule
+main.c: CMakeFiles/main.c.dir/rule
 
-.PHONY : mesh-agent-native
-
-# clean rule for target.
-CMakeFiles/mesh-agent-native.dir/clean:
-	$(MAKE) -f CMakeFiles/mesh-agent-native.dir/build.make CMakeFiles/mesh-agent-native.dir/clean
-.PHONY : CMakeFiles/mesh-agent-native.dir/clean
+.PHONY : main.c
 
 # clean rule for target.
-clean: CMakeFiles/mesh-agent-native.dir/clean
+CMakeFiles/main.c.dir/clean:
+	$(MAKE) -f CMakeFiles/main.c.dir/build.make CMakeFiles/main.c.dir/clean
+.PHONY : CMakeFiles/main.c.dir/clean
+
+# clean rule for target.
+clean: CMakeFiles/main.c.dir/clean
 
 .PHONY : clean
 
