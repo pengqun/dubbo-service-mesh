@@ -3,7 +3,7 @@ ODIR := ../out
 DEPDIR := ../deps
 
 BIN  := $(ODIR)/mesh-agent
-SRC  := main.c etcd.c log.c util.c
+SRC  := $(wildcard *.c)
 OBJ  := $(patsubst %.c,$(ODIR)/%.o,$(SRC))
 
 LIBS := -lcurl -lpthread
