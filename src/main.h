@@ -7,7 +7,12 @@
 #include <microhttpd.h>
 #include <memory.h>
 
-void start_http_server(int port);
+
+void register_etcd_service(int server_port);
+
+void discover_etcd_services();
+
+void start_http_server(int server_port);
 
 int access_handler(void *cls,
                    struct MHD_Connection *connection,

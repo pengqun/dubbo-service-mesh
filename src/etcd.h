@@ -22,6 +22,10 @@
 
 #include <stdbool.h>
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 /*
  * If set etcdlib will _not_ initialize curl
  * using curl_global_init. Note that 

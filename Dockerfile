@@ -1,6 +1,8 @@
 # Builder container
 FROM registry.cn-hangzhou.aliyuncs.com/tianchi4-docker/tianchi4-services AS builder
 
+COPY sources.list /etc/apt
+
 RUN apt-get update
 RUN apt-get install -y build-essential libcurl4-openssl-dev
 

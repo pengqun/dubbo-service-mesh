@@ -1,6 +1,10 @@
 #include "main.h"
 #include "log.h"
 #include "etcd.h"
+#include "util.h"
+
+static char *endpoints[3];
+static int num_endpoints = 0;
 
 int main(int argc, char **argv) {
     int c;
@@ -39,25 +43,64 @@ int main(int argc, char **argv) {
     etcd_init(etcd_host, 2379, 0);
     log_msg(INFO, "Init etcd to host %s", etcd_host);
 
-    etcd_set("my_key", "my_value", 3600, 0);
-    char *value = malloc(1000);
-    etcd_get("my_key", &value, NULL);
-    log_msg(INFO, "Got etcd value: %s", value);
+//    char *value = malloc(1000);
+//    etcd_get("my_key", &value, NULL);
+//    log_msg(INFO, "Got etcd value: %s", value);
+
+
+    if (strcmp(type, "consumer") == 0) {
+        discover_etcd_services();
+    } else {
+        register_etcd_service(server_port);
+    }
 
     start_http_server(server_port);
-
-//    if (strcmp(type, "consumer") == 0) {
-//    }
 
     log_msg(INFO, "%s %d %d", type, server_port, dubbo_port);
 
     return 0;
 }
 
-void start_http_server(int port) {
+void register_etcd_service(int server_port) {
+    char *ip_addr = get_local_ip_addr();
+    log_msg(INFO, "Local IP address: %s", ip_addr);
+
+    char etcd_key[128];
+    sprintf(etcd_key, "/dubbomesh/com.alibaba.dubbo.performance.demo.provider.IHelloService/%s:%d",
+            ip_addr, server_port);
+
+    int ret = etcd_set(etcd_key, "", 3600, 0);
+    if (ret != 0) {
+        log_msg(FATAL, "Failed to do etcd_set: %d", ret);
+    }
+    log_msg(INFO, "Register service at: %s", etcd_key);
+}
+
+static void key_value_callback(const char *key, const char *value, void *arg) {
+    log_msg(INFO, "Got etcd service: %s", key);
+    char *endpoint = strrchr(key, '/') + 1;
+    endpoints[num_endpoints] = malloc(strlen(endpoint));
+    strcpy(endpoints[num_endpoints], endpoint);
+    num_endpoints++;
+}
+
+void discover_etcd_services() {
+    long long modifiedIndex = 0;
+    int ret = etcd_get_directory("/dubbomesh/com.alibaba.dubbo.performance.demo.provider.IHelloService/",
+                                 key_value_callback, NULL, &modifiedIndex);
+    if (ret != 0) {
+        log_msg(FATAL, "Failed to do etcd_get_directory: %d", ret);
+    }
+    log_msg(INFO, "Discovered total %d service endpoints", num_endpoints);
+    for (int i = 0; i < num_endpoints; i++) {
+        log_msg(INFO, "\tendpoint %d: %s", i, endpoints[i]);
+    }
+}
+
+void start_http_server(int server_port) {
     struct MHD_Daemon *d = MHD_start_daemon(
             MHD_USE_AUTO | MHD_USE_INTERNAL_POLLING_THREAD,
-            (uint16_t) port, NULL, NULL, &access_handler, NULL, MHD_OPTION_END);
+            (uint16_t) server_port, NULL, NULL, &access_handler, NULL, MHD_OPTION_END);
     if (d == NULL) {
         log_msg(FATAL, "Failed to start http server");
         exit(-1);
