@@ -8,6 +8,8 @@
 #include <memory.h>
 #include "http_parser.h"
 
+#define DEBUG_THIS_FILE
+
 typedef struct connection {
     http_parser parser;
     int fd;

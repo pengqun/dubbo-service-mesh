@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <signal.h>
 #include "main.h"
 #include "log.h"
 #include "etcd.h"
@@ -6,6 +7,9 @@
 #include "ae.h"
 #include "anet.h"
 #include "http_parser.h"
+#ifdef PROFILER
+#include <gperftools/profiler.h>
+#endif
 
 #define MAX_ACCEPTS_PER_CALL 1
 #define NET_IP_STR_LEN 46
@@ -32,7 +36,7 @@ void register_etcd_service(int server_port) {
     log_msg(INFO, "Register service at: %s", etcd_key);
 }
 
-static void key_value_callback(const char *key, const char *value, void *arg) {
+void key_value_callback(const char *key, const char *value, void *arg) {
     log_msg(INFO, "Got etcd service: %s", key);
     char *endpoint = strrchr(key, '/') + 1;
     endpoints[num_endpoints] = malloc(strlen(endpoint));
@@ -71,22 +75,21 @@ void writeResponseToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (conn->written == conn->length) {
         conn->written = 0;
         aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
-        close(fd);
     }
 }
 
 int http_parser_on_url(http_parser *parser, const char *at, size_t length) {
-    log_msg(INFO, "On url: %.*s", length, at);
+    log_msg(DEBUG, "On url: %.*s", length, at);
     return 0;
 }
 
 int http_parser_on_body(http_parser *parser, const char *at, size_t length) {
-    log_msg(INFO, "On body: %.*s", length, at);
+    log_msg(DEBUG, "On body: %.*s", length, at);
     return 0;
 }
 
 int http_parser_on_complete(http_parser *parser) {
-    log_msg(INFO, "On complete");
+    log_msg(DEBUG, "On complete");
     connection *conn = parser->data;
 
     char *data = "my_data";
@@ -102,7 +105,6 @@ int http_parser_on_complete(http_parser *parser) {
     if (aeCreateFileEvent(event_loop, conn->fd, AE_WRITABLE, writeResponseToClient, conn) == AE_ERR) {
         log_msg(WARN, "Failed to create writable event for client");
         close(conn->fd);
-        free(conn);
     }
     return 0;
 }
@@ -113,25 +115,28 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     ssize_t nread = read(fd, buf, sizeof(buf));
 
+    if (nread >= 0) {
+        if (http_parser_execute(&conn->parser, &parser_settings, buf, (size_t) nread) == nread) {
+            return;
+        }
+        log_msg(WARN, "Failed to parse HTTP request");
+    }
+
     if (nread == -1) {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
         log_msg(WARN, "Failed to read from client: %s", strerror(errno));
-        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
-        close(fd);
-    }
-
-    if (http_parser_execute(&conn->parser, &parser_settings, buf, (size_t) nread) != nread) {
-        log_msg(WARN, "Failed to parse HTTP request");
     }
 
     if (nread == 0) {
-        log_msg(INFO, "Client closed connection");
-        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
-        close(fd);
+        log_msg(DEBUG, "Client closed connection");
     }
+
+    aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
+    close(fd);
+    free(conn);
 }
 
 void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -145,11 +150,10 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
                 log_msg(WARN, "Failed to accept client connection: %s", neterr);
             return;
         }
-        log_msg(INFO, "Accept client connection: %s:%d - %d", client_ip, client_port, client_fd);
+        log_msg(DEBUG, "Accept client connection: %s:%d - %d", client_ip, client_port, client_fd);
 
         anetNonBlock(NULL, client_fd);
         anetEnableTcpNoDelay(NULL, client_fd);
-//            anetKeepAlive(NULL, client_fd, 300);
 
         connection *conn = malloc(sizeof(connection));
         conn->fd = client_fd;
@@ -159,7 +163,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         if (aeCreateFileEvent(event_loop, client_fd, AE_READABLE, readQueryFromClient, conn) == AE_ERR) {
             log_msg(WARN, "Failed to create file event for accepted socket");
             free(conn);
-            close(fd);
+            close(client_fd);
         }
     }
 }
@@ -184,7 +188,53 @@ void start_http_server(int server_port) {
         exit(EXIT_FAILURE);
     }
 
+#ifdef PROFILER
+    ProfilerStart("iprofile");
+    log_msg(INFO, "Start profiler");
+#endif
     aeMain(event_loop);
+
+#ifdef PROFILER
+    ProfilerStop();
+    log_msg(INFO, "Stop profiler");
+#endif
+}
+
+#if 1
+int access_handler(void *cls, struct MHD_Connection *connection,
+                   const char *url, const char *method, const char *version,
+                   const char *upload_data, size_t *upload_data_size, void **con_cl) {
+    static int dummy;
+    const char * page = "MICRO";
+    struct MHD_Response * response;
+    int ret;
+    if (&dummy != *con_cl) {
+        *con_cl = &dummy;
+        return MHD_YES;
+    }
+    *con_cl = NULL;
+    response = MHD_create_response_from_buffer(strlen(page), (void*) page, MHD_RESPMEM_PERSISTENT);
+    ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+    return ret;
+}
+
+void start_micro_http_server(int server_port) {
+    struct MHD_Daemon *d = MHD_start_daemon(MHD_USE_AUTO | MHD_USE_INTERNAL_POLLING_THREAD,
+            (uint16_t) server_port, NULL, NULL, &access_handler, NULL, MHD_OPTION_END);
+    if (d == NULL) {
+        log_msg(FATAL, "Failed to start http server");
+        exit(-1);
+    }
+    (void) getc (stdin);
+    MHD_stop_daemon(d);
+}
+
+#endif
+
+void signal_handler(int sig) {
+    log_msg(INFO, "Got signal %d", sig);
+    aeStop(event_loop);
 }
 
 int main(int argc, char **argv) {
@@ -221,6 +271,8 @@ int main(int argc, char **argv) {
     init_log(log_dir);
     log_msg(INFO, "Init log with dir %s", log_dir);
 
+    signal(SIGINT, signal_handler);
+
     etcd_init(etcd_host, 2379, 0);
     log_msg(INFO, "Init etcd to host %s", etcd_host);
 
@@ -232,52 +284,9 @@ int main(int argc, char **argv) {
 
     start_http_server(server_port);
 
+//    start_micro_http_server(server_port);
+
+    log_msg(INFO, "Quit.");
+
     return 0;
 }
-
-
-#if 0
-void start_micro_http_server(int server_port) {
-    struct MHD_Daemon *d = MHD_start_daemon(
-            MHD_USE_AUTO | MHD_USE_INTERNAL_POLLING_THREAD,
-            (uint16_t) server_port, NULL, NULL, &access_handler, NULL, MHD_OPTION_END);
-    if (d == NULL) {
-        log_msg(FATAL, "Failed to start http server");
-        exit(-1);
-    }
-    (void) getc (stdin);
-    MHD_stop_daemon(d);
-}
-
-int access_handler(void *cls,
-                   struct MHD_Connection *connection,
-                   const char *url,
-                   const char *method,
-                   const char *version,
-                   const char *upload_data,
-                   size_t *upload_data_size,
-                   void **con_cl) {
-    static int dummy;
-    const char * page = "MICRO!";
-    struct MHD_Response * response;
-    int ret;
-
-    if (&dummy != *con_cl)
-    {
-        /* The first time only the headers are valid,
-           do not respond in the first round... */
-        *con_cl = &dummy;
-        return MHD_YES;
-    }
-    *con_cl = NULL; /* clear context pointer */
-
-    response = MHD_create_response_from_buffer (strlen(page),
-                                                (void*) page,
-                                                MHD_RESPMEM_PERSISTENT);
-    ret = MHD_queue_response(connection,
-                             MHD_HTTP_OK,
-                             response);
-    MHD_destroy_response(response);
-    return ret;
-}
-#endif
