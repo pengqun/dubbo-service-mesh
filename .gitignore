@@ -1,3 +1,4 @@
-obj
+out
 cmake-build-debug
-mesh-agent
+deps/jansson*
+deps/libmicrohttpd*
