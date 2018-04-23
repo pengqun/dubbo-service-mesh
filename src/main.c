@@ -1,18 +1,20 @@
-#include <errno.h>
-#include <signal.h>
 #include "main.h"
 #include "log.h"
 #include "etcd.h"
 #include "util.h"
 #include "ae.h"
 #include "anet.h"
-#include "http_parser.h"
-#ifdef PROFILER
-#include <gperftools/profiler.h>
-#endif
+
+#define AGENT_CONSUMER 1
+#define AGENT_PROVIDER 2
+
+#define ETCD_PORT 2379
 
 #define MAX_ACCEPTS_PER_CALL 1
 #define NET_IP_STR_LEN 46
+
+static int dubbo_port = 0;
+static int agent_type = 0;
 
 static char *endpoints[3];
 static int num_endpoints = 0;
@@ -57,6 +59,8 @@ void discover_etcd_services() {
     }
 }
 
+#if 1
+
 void writeResponseToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     connection *conn = privdata;
 
@@ -78,20 +82,7 @@ void writeResponseToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 }
 
-int http_parser_on_url(http_parser *parser, const char *at, size_t length) {
-    log_msg(DEBUG, "On url: %.*s", length, at);
-    return 0;
-}
-
-int http_parser_on_body(http_parser *parser, const char *at, size_t length) {
-    log_msg(DEBUG, "On body: %.*s", length, at);
-    return 0;
-}
-
-int http_parser_on_complete(http_parser *parser) {
-    log_msg(DEBUG, "On complete");
-    connection *conn = parser->data;
-
+void call_remote_provider(connection * conn) {
     char *data = "my_data";
 
     conn->buf[0] = '\0';
@@ -106,6 +97,44 @@ int http_parser_on_complete(http_parser *parser) {
         log_msg(WARN, "Failed to create writable event for client");
         close(conn->fd);
     }
+}
+
+void call_local_provider(connection * conn) {
+    char *data = "my_data";
+
+    conn->buf[0] = '\0';
+    sprintf(conn->buf, "HTTP/1.1 200 OK\r\n"
+                       "Content-Length: %ld\r\n"
+                       "\r\n"
+                       "%s", strlen(data), data);
+    conn->length = strlen(conn->buf);
+    conn->written = 0;
+
+    if (aeCreateFileEvent(event_loop, conn->fd, AE_WRITABLE, writeResponseToClient, conn) == AE_ERR) {
+        log_msg(WARN, "Failed to create writable event for client");
+        close(conn->fd);
+    }
+}
+
+int http_parser_on_url(http_parser *parser, const char *at, size_t length) {
+    log_msg(DEBUG, "On url: %.*s", length, at);
+    return 0;
+}
+
+int http_parser_on_body(http_parser *parser, const char *at, size_t length) {
+    log_msg(DEBUG, "On body: %.*s", length, at);
+    return 0;
+}
+
+int http_parser_on_complete(http_parser *parser) {
+    log_msg(DEBUG, "On complete");
+    connection *conn = parser->data;
+
+    if (agent_type == AGENT_CONSUMER) {
+        call_remote_provider(conn);
+    } else {
+        call_local_provider(conn);
+    }
     return 0;
 }
 
@@ -116,27 +145,29 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     ssize_t nread = read(fd, buf, sizeof(buf));
 
     if (nread >= 0) {
-        if (http_parser_execute(&conn->parser, &parser_settings, buf, (size_t) nread) == nread) {
-            return;
+        size_t nparsed = http_parser_execute(&conn->parser, &parser_settings, buf, (size_t) nread);
+        if (nparsed != nread) {
+            log_msg(WARN, "Failed to parse HTTP request");
+            goto close_socket;
         }
-        log_msg(WARN, "Failed to parse HTTP request");
-    }
-
-    if (nread == -1) {
-        if (errno == EAGAIN) {
-            log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
-            return;
+        if (nread == 0) {
+            log_msg(DEBUG, "Client closed connection");
+            goto close_socket;
         }
-        log_msg(WARN, "Failed to read from client: %s", strerror(errno));
+        return;
     }
 
-    if (nread == 0) {
-        log_msg(DEBUG, "Client closed connection");
+    if (errno == EAGAIN) {
+        log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
+        return;
     }
+    log_msg(WARN, "Failed to read from client: %s", strerror(errno));
 
+close_socket:
     aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
     close(fd);
     free(conn);
+    log_msg(DEBUG, "Closed connection to %d", fd);
 }
 
 void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -200,7 +231,9 @@ void start_http_server(int server_port) {
 #endif
 }
 
-#if 1
+#endif
+
+#if 0
 int access_handler(void *cls, struct MHD_Connection *connection,
                    const char *url, const char *method, const char *version,
                    const char *upload_data, size_t *upload_data_size, void **con_cl) {
@@ -240,15 +273,17 @@ void signal_handler(int sig) {
 int main(int argc, char **argv) {
     int c;
     int server_port = 0;
-    int dubbo_port = 0;
-    char *type = NULL;
     char *etcd_host = NULL;
     char *log_dir = NULL;
 
     while ((c = getopt(argc, argv, "t:e:p:d:l:")) != -1) {
         switch (c) {
             case 't':
-                type = optarg;
+                if (strcmp(optarg, "consumer") == 0) {
+                    agent_type = AGENT_CONSUMER;
+                } else {
+                    agent_type = AGENT_PROVIDER;
+                }
                 break;
             case 'e':
                 etcd_host = optarg;
@@ -273,10 +308,10 @@ int main(int argc, char **argv) {
 
     signal(SIGINT, signal_handler);
 
-    etcd_init(etcd_host, 2379, 0);
+    etcd_init(etcd_host, ETCD_PORT, 0);
     log_msg(INFO, "Init etcd to host %s", etcd_host);
 
-    if (strcmp(type, "consumer") == 0) {
+    if (agent_type == AGENT_CONSUMER) {
         discover_etcd_services();
     } else {
         register_etcd_service(server_port);
