@@ -119,8 +119,8 @@ static inline void log_with_option(int32_t type, int32_t fpno, char *time,
     if (log_conf[type][fpno].log_opt & LOG_OPT_TIME) 
         fprintf(log_output_fps[fpno], "%s  ", time); 
 
-    if (log_conf[type][fpno].log_opt & LOG_OPT_BAR) 
-        fprintf(log_output_fps[fpno], "[%s] ", log_type_str[type]); 
+    if (log_conf[type][fpno].log_opt & LOG_OPT_BAR)
+        fprintf(log_output_fps[fpno], "[%s] ", log_type_str[type]);
 
     fprintf(log_output_fps[fpno], "%s ", msg); 
 

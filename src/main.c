@@ -1,14 +1,12 @@
 #include "main.h"
-#include "log.h"
-#include "etcd.h"
-#include "util.h"
-#include "ae.h"
-#include "anet.h"
 
 #define AGENT_CONSUMER 1
 #define AGENT_PROVIDER 2
 
 #define ETCD_PORT 2379
+
+#define INTERFACE "en0"
+//#define INTERFACE "eth0"
 
 #define MAX_ACCEPTS_PER_CALL 1
 #define NET_IP_STR_LEN 46
@@ -16,22 +14,24 @@
 static int dubbo_port = 0;
 static int agent_type = 0;
 
-static char *endpoints[3];
+static endpoint_t endpoints[3];
 static int num_endpoints = 0;
+
 static aeEventLoop *event_loop = NULL;
 static char neterr[256];
 
 static http_parser_settings parser_settings;
 
+static char etcd_key[128];
+
 void register_etcd_service(int server_port) {
-    char *ip_addr = get_local_ip_addr();
+    char *ip_addr = get_local_ip_addr(INTERFACE);
     log_msg(INFO, "Local IP address: %s", ip_addr);
 
-    char etcd_key[128];
     sprintf(etcd_key, "/dubbomesh/com.alibaba.dubbo.performance.demo.provider.IHelloService/%s:%d",
             ip_addr, server_port);
 
-    int ret = etcd_set(etcd_key, "", 3600, 0);
+    int ret = etcd_set(etcd_key, "", 120, 0);
     if (ret != 0) {
         log_msg(FATAL, "Failed to do etcd_set: %d", ret);
     }
@@ -40,9 +40,16 @@ void register_etcd_service(int server_port) {
 
 void key_value_callback(const char *key, const char *value, void *arg) {
     log_msg(INFO, "Got etcd service: %s", key);
-    char *endpoint = strrchr(key, '/') + 1;
-    endpoints[num_endpoints] = malloc(strlen(endpoint));
-    strcpy(endpoints[num_endpoints], endpoint);
+    char *ip_and_port = strrchr(key, '/') + 1;
+    char *port = strdup(strrchr(key, ':') + 1);
+    char *ip = strndup(ip_and_port, strlen(ip_and_port) - strlen(port) - 1);
+
+    endpoints[num_endpoints].ip = ip;
+    endpoints[num_endpoints].port = atoi(port);
+    endpoints[num_endpoints].event_loop = NULL;
+    endpoints[num_endpoints].pending = 0;
+    log_msg(DEBUG, "IP: %s, Port: %d", endpoints[num_endpoints].ip, endpoints[num_endpoints].port);
+
     num_endpoints++;
 }
 
@@ -54,17 +61,31 @@ void discover_etcd_services() {
         log_msg(FATAL, "Failed to do etcd_get_directory: %d", ret);
     }
     log_msg(INFO, "Discovered total %d service endpoints", num_endpoints);
-    for (int i = 0; i < num_endpoints; i++) {
-        log_msg(INFO, "\tendpoint %d: %s", i, endpoints[i]);
+}
+
+void deregister_etcd_service() {
+    int ret = etcd_del(etcd_key);
+    if (ret != 0) {
+        log_msg(WARN, "Failed to do etcd_del: %d", ret);
     }
+    log_msg(INFO, "Deregister service at: %s", etcd_key);
 }
 
 #if 1
 
 void writeResponseToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
-    connection *conn = privdata;
+    connection_in_t *conn = privdata;
 
-    ssize_t nwritten = write(conn->fd, conn->buf + conn->written, conn->length - conn->written);
+//    ssize_t nwritten = write(conn->fd, conn->buf + conn->written, conn->length - conn->written);
+
+    char *data = "OK";
+    char buf[128];
+    sprintf(buf, "HTTP/1.1 200 OK\r\n"
+                 "Content-Length: %ld\r\n"
+                 "\r\n"
+                 "%s", strlen(data), data);
+    ssize_t nwritten = write(conn->fd, buf, strlen(buf));
+
     if (nwritten == -1) {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
@@ -76,13 +97,18 @@ void writeResponseToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     conn->written += nwritten;
-    if (conn->written == conn->length) {
-        conn->written = 0;
-        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
-    }
+
+    conn->buf = NULL;
+    conn->length = 0;
+    aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
+
+//    if (conn->written == conn->length) {
+//        conn->written = 0;
+//        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
+//    }
 }
 
-void call_remote_provider(connection * conn) {
+void call_remote_provider(connection_in_t * conn) {
     char *data = "my_data";
 
     conn->buf[0] = '\0';
@@ -99,17 +125,7 @@ void call_remote_provider(connection * conn) {
     }
 }
 
-void call_local_provider(connection * conn) {
-    char *data = "my_data";
-
-    conn->buf[0] = '\0';
-    sprintf(conn->buf, "HTTP/1.1 200 OK\r\n"
-                       "Content-Length: %ld\r\n"
-                       "\r\n"
-                       "%s", strlen(data), data);
-    conn->length = strlen(conn->buf);
-    conn->written = 0;
-
+void call_local_provider(connection_in_t * conn) {
     if (aeCreateFileEvent(event_loop, conn->fd, AE_WRITABLE, writeResponseToClient, conn) == AE_ERR) {
         log_msg(WARN, "Failed to create writable event for client");
         close(conn->fd);
@@ -117,18 +133,24 @@ void call_local_provider(connection * conn) {
 }
 
 int http_parser_on_url(http_parser *parser, const char *at, size_t length) {
-    log_msg(DEBUG, "On url: %.*s", length, at);
+//    log_msg(DEBUG, "On url: %.*s", length, at);
     return 0;
 }
 
 int http_parser_on_body(http_parser *parser, const char *at, size_t length) {
-    log_msg(DEBUG, "On body: %.*s", length, at);
+//    log_msg(DEBUG, "On body: %.*s", length, at);
+    connection_in_t *conn = parser->data;
+    conn->buf = strrchr(at, '=') + 1;
+    conn->length = length - (conn->buf - at);
+//    log_msg(DEBUG, "Buf: %.*s", conn->length, conn->buf);
+    log_msg(DEBUG, "Received buf length: %d", conn->length);
     return 0;
 }
 
 int http_parser_on_complete(http_parser *parser) {
     log_msg(DEBUG, "On complete");
-    connection *conn = parser->data;
+    connection_in_t *conn = parser->data;
+    http_parser_init(&conn->parser, HTTP_REQUEST);
 
     if (agent_type == AGENT_CONSUMER) {
         call_remote_provider(conn);
@@ -139,8 +161,8 @@ int http_parser_on_complete(http_parser *parser) {
 }
 
 void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
-    connection *conn = privdata;
-    char buf[1024];
+    connection_in_t *conn = privdata;
+    char buf[2048];
 
     ssize_t nread = read(fd, buf, sizeof(buf));
 
@@ -186,10 +208,13 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         anetNonBlock(NULL, client_fd);
         anetEnableTcpNoDelay(NULL, client_fd);
 
-        connection *conn = malloc(sizeof(connection));
+        connection_in_t *conn = malloc(sizeof(connection_in_t));
         conn->fd = client_fd;
         http_parser_init(&conn->parser, HTTP_REQUEST);
         conn->parser.data = conn;
+        conn->buf = NULL;
+        conn->length = 0;
+        conn->written = 0;
 
         if (aeCreateFileEvent(event_loop, client_fd, AE_READABLE, readQueryFromClient, conn) == AE_ERR) {
             log_msg(WARN, "Failed to create file event for accepted socket");
@@ -320,6 +345,8 @@ int main(int argc, char **argv) {
     start_http_server(server_port);
 
 //    start_micro_http_server(server_port);
+
+    deregister_etcd_service();
 
     log_msg(INFO, "Quit.");
 

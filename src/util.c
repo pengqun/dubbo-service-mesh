@@ -11,7 +11,7 @@
 
 #include "util.h"
 
-char *get_local_ip_addr() {
+char *get_local_ip_addr(const char *interface) {
     int fd;
     struct ifreq ifr;
 
@@ -21,7 +21,7 @@ char *get_local_ip_addr() {
     ifr.ifr_addr.sa_family = AF_INET;
 
     /* I want IP address attached to "eth0" */
-    strncpy(ifr.ifr_name, "eth0", IFNAMSIZ - 1);
+    strncpy(ifr.ifr_name, interface, IFNAMSIZ - 1);
 
     ioctl(fd, SIOCGIFADDR, &ifr);
 
