@@ -11,6 +11,8 @@
 #define MAX_ACCEPTS_PER_CALL 1
 #define NET_IP_STR_LEN 46
 
+#define NUM_CONN_PER_PROVIDER 8
+
 static int dubbo_port = 0;
 static int agent_type = 0;
 
@@ -31,11 +33,40 @@ void register_etcd_service(int server_port) {
     sprintf(etcd_key, "/dubbomesh/com.alibaba.dubbo.performance.demo.provider.IHelloService/%s:%d",
             ip_addr, server_port);
 
-    int ret = etcd_set(etcd_key, "", 120, 0);
+    int ret = etcd_set(etcd_key, "", 600, 0);
     if (ret != 0) {
         log_msg(FATAL, "Failed to do etcd_set: %d", ret);
     }
     log_msg(INFO, "Register service at: %s", etcd_key);
+}
+
+int connection_out_init(void *elem, void *data) {
+    endpoint_t *endpoint = data;
+    connection_out_t *conn = elem;
+    conn->fd = 0;
+    conn->buf = NULL;
+    conn->length = 0;
+    http_parser_init(&conn->parser, HTTP_RESPONSE);
+
+    int fd = anetTcpNonBlockConnect(neterr, endpoint->ip, endpoint->port);
+    if (errno != EINPROGRESS) {
+        log_msg(ERR, "Failed to connect to %s:%d", endpoint->ip, endpoint->port);
+        close(fd);
+        conn->fd = -1;
+    } else {
+        anetEnableTcpNoDelay(NULL, fd);
+        conn->fd = fd;
+        log_msg(DEBUG, "Build connection to %s:%d", endpoint->ip, endpoint->port);
+    }
+    return 1;
+}
+
+void connection_out_clean(void *elem) {
+    log_msg(DEBUG, "Clean connection_out");
+    connection_out_t *conn = elem;
+    if (conn->fd > 0) {
+        close(conn->fd);
+    }
 }
 
 void key_value_callback(const char *key, const char *value, void *arg) {
@@ -46,8 +77,11 @@ void key_value_callback(const char *key, const char *value, void *arg) {
 
     endpoints[num_endpoints].ip = ip;
     endpoints[num_endpoints].port = atoi(port);
-    endpoints[num_endpoints].event_loop = NULL;
-    endpoints[num_endpoints].pending = 0;
+    endpoints[num_endpoints].event_loop = event_loop; // TODO
+    endpoints[num_endpoints].conn_pool = PoolInit(
+            NUM_CONN_PER_PROVIDER, NUM_CONN_PER_PROVIDER, sizeof(connection_out_t),
+            NULL, connection_out_init, &endpoints[num_endpoints], connection_out_clean, NULL
+    );
     log_msg(DEBUG, "IP: %s, Port: %d", endpoints[num_endpoints].ip, endpoints[num_endpoints].port);
 
     num_endpoints++;
@@ -73,7 +107,7 @@ void deregister_etcd_service() {
 
 #if 1
 
-void writeResponseToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
+void write_to_client(aeEventLoop *el, int fd, void *privdata, int mask) {
     connection_in_t *conn = privdata;
 
 //    ssize_t nwritten = write(conn->fd, conn->buf + conn->written, conn->length - conn->written);
@@ -119,14 +153,14 @@ void call_remote_provider(connection_in_t * conn) {
     conn->length = strlen(conn->buf);
     conn->written = 0;
 
-    if (aeCreateFileEvent(event_loop, conn->fd, AE_WRITABLE, writeResponseToClient, conn) == AE_ERR) {
+    if (aeCreateFileEvent(event_loop, conn->fd, AE_WRITABLE, write_to_client, conn) == AE_ERR) {
         log_msg(WARN, "Failed to create writable event for client");
         close(conn->fd);
     }
 }
 
 void call_local_provider(connection_in_t * conn) {
-    if (aeCreateFileEvent(event_loop, conn->fd, AE_WRITABLE, writeResponseToClient, conn) == AE_ERR) {
+    if (aeCreateFileEvent(event_loop, conn->fd, AE_WRITABLE, write_to_client, conn) == AE_ERR) {
         log_msg(WARN, "Failed to create writable event for client");
         close(conn->fd);
     }
@@ -160,7 +194,7 @@ int http_parser_on_complete(http_parser *parser) {
     return 0;
 }
 
-void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
+void read_from_client(aeEventLoop *el, int fd, void *privdata, int mask) {
     connection_in_t *conn = privdata;
     char buf[2048];
 
@@ -192,7 +226,7 @@ close_socket:
     log_msg(DEBUG, "Closed connection to %d", fd);
 }
 
-void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
+void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
     int client_port, client_fd, max = MAX_ACCEPTS_PER_CALL;
     char client_ip[NET_IP_STR_LEN];
 
@@ -216,7 +250,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         conn->length = 0;
         conn->written = 0;
 
-        if (aeCreateFileEvent(event_loop, client_fd, AE_READABLE, readQueryFromClient, conn) == AE_ERR) {
+        if (aeCreateFileEvent(event_loop, client_fd, AE_READABLE, read_from_client, conn) == AE_ERR) {
             log_msg(WARN, "Failed to create file event for accepted socket");
             free(conn);
             close(client_fd);
@@ -238,7 +272,7 @@ void start_http_server(int server_port) {
     }
     anetNonBlock(NULL, listen_fd);
 
-    int ret = aeCreateFileEvent(event_loop, listen_fd, AE_READABLE, acceptTcpHandler, NULL);
+    int ret = aeCreateFileEvent(event_loop, listen_fd, AE_READABLE, accept_tcp_handler, NULL);
     if (ret == ANET_ERR) {
         log_msg(FATAL, "Failed to create file event for listening socket");
         exit(EXIT_FAILURE);

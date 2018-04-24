@@ -24,8 +24,7 @@
 #include "ae.h"
 #include "anet.h"
 #include "http_parser.h"
-
-#define NUM_CONN_PER_PROVIDER 64
+#include "pool.h"
 
 typedef struct connection_in {
     http_parser parser;
@@ -38,17 +37,16 @@ typedef struct connection_in {
 typedef struct connection_out {
     http_parser parser;
     int fd;
-    char buf[32];
+    char *buf;
     size_t length;
-    ssize_t read;
+//    ssize_t read;
 } connection_out_t;
 
 typedef struct endpoint {
     char *ip;
     int port;
-    connection_out_t conections[NUM_CONN_PER_PROVIDER];
+    Pool *conn_pool;
     aeEventLoop *event_loop;
-    int pending;
 } endpoint_t;
 
 #endif
