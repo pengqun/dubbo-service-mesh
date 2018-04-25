@@ -1290,7 +1290,7 @@ reexecute:
               }
               break;
 
-            /* content-length */
+            /* content-len_in */
 
             case h_matching_content_length:
               parser->index++;
@@ -1730,7 +1730,7 @@ reexecute:
           REEXECUTE();
         }
 
-        /* Cannot use chunked encoding and a content-length header together
+        /* Cannot use chunked encoding and a content-len_in header together
            per the HTTP specification. */
         if ((parser->flags & F_CHUNKED) &&
             (parser->flags & F_CONTENTLENGTH)) {
@@ -1821,7 +1821,7 @@ reexecute:
             UPDATE_STATE(s_body_identity);
           } else {
             if (!http_message_needs_eof(parser)) {
-              /* Assume content-length 0 - read the next */
+              /* Assume content-len_in 0 - read the next */
               UPDATE_STATE(NEW_MESSAGE());
               CALLBACK_NOTIFY(message_complete);
             } else {
@@ -1860,7 +1860,7 @@ reexecute:
            * trigger the data callback, just as in every other case. The
            * problem with this is that this makes it difficult for the test
            * harness to distinguish between complete-on-EOF and
-           * complete-on-length. It's not clear that this distinction is
+           * complete-on-len_in. It's not clear that this distinction is
            * important for applications, but let's keep it for now.
            */
           CALLBACK_DATA_(body, p - body_mark + 1, p - data);
@@ -1977,7 +1977,7 @@ reexecute:
             && parser->content_length != ULLONG_MAX);
 
         /* See the explanation in s_body_identity for why the content
-         * length and data pointers are managed this way.
+         * len_in and data pointers are managed this way.
          */
         MARK(body);
         parser->content_length -= to_read;

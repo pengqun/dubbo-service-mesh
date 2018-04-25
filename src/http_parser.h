@@ -330,7 +330,7 @@ struct http_parser_settings {
   http_cb      on_headers_complete;
   http_data_cb on_body;
   http_cb      on_message_complete;
-  /* When on_chunk_header is called, the current chunk length is stored
+  /* When on_chunk_header is called, the current chunk len_in is stored
    * in parser->content_length.
    */
   http_cb      on_chunk_header;
