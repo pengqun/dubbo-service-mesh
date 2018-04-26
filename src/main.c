@@ -2,7 +2,6 @@
 #include "consumer.h"
 #include "provider.h"
 
-
 #define AGENT_CONSUMER 1
 #define AGENT_PROVIDER 2
 
@@ -23,6 +22,9 @@ void signal_handler(int sig) ;
 void start_http_server(int server_port) ;
 void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) ;
 
+#ifdef MICRO_HTTP
+void start_micro_http_server(int server_port) ;
+#endif
 
 int main(int argc, char **argv) {
     int c;
@@ -71,8 +73,11 @@ int main(int argc, char **argv) {
         provider_init(server_port, dubbo_port);
     }
 
+#ifdef MICRO_HTTP
+    start_micro_http_server(server_port);
+#else
     start_http_server(server_port);
-//    start_micro_http_server(server_port);
+#endif
 
     if (agent_type == AGENT_CONSUMER) {
         consumer_cleanup();
@@ -141,7 +146,7 @@ void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 }
 
-#if 0
+#ifdef MICRO_HTTP
 int access_handler(void *cls, struct MHD_Connection *connection,
                    const char *url, const char *method, const char *version,
                    const char *upload_data, size_t *upload_data_size, void **con_cl) {

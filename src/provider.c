@@ -26,7 +26,7 @@ int on_http_url(http_parser *parser, const char *at, size_t length) ;
 int on_http_body(http_parser *parser, const char *at, size_t length) ;
 int on_http_complete(http_parser *parser) ;
 
-void write_to_consumer_agent(aeEventLoop *el, int fd, void *privdata, int mask) ;
+void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
 
 void provider_init(int server_port, int dubbo_port) {
     log_msg(INFO, "Provider init begin");
@@ -52,6 +52,7 @@ void provider_cleanup() {
 void provider_http_handler(aeEventLoop *event_loop, int fd) {
     // Fetch a connection object from pool
     connection_caa_t *conn_caa = PoolGet(connection_caa_pool);
+//    connection_caa_t *conn_caa = malloc(sizeof(connection_caa_t));
     memset(conn_caa, 0, sizeof(connection_caa_t));
     conn_caa->fd = fd;
     http_parser_init(&conn_caa->parser, HTTP_REQUEST);
@@ -70,22 +71,24 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
     connection_caa_t *conn_caa = privdata;
 
     ssize_t nread = read(fd, conn_caa->buf + conn_caa->nread, sizeof(conn_caa->buf) - conn_caa->nread);
-    if (nread > 0) {
+    if (nread >= 0) {
         log_msg(DEBUG, "Read %d bytes from consumer agent for socket %d", nread, fd);
 
         size_t nparsed = http_parser_execute(&conn_caa->parser, &parser_settings,
                                              conn_caa->buf + conn_caa->nread, (size_t) nread);
-
         conn_caa->nread += nread;
 
-        if (nparsed == nread) {
+        if (nread > 0 && nparsed == nread) {
             return;
         }
-        log_msg(WARN, "Failed to parse HTTP response from remote agent");
+
+        if (nread == 0) {
+            log_msg(WARN, "Consumer agent closed connection");
+        } else {
+            log_msg(WARN, "Failed to parse HTTP response from remote agent");
+        }
     }
-    if (nread == 0) {
-        log_msg(WARN, "Consumer agent closed connection");
-    }
+
     if (nread < 0) {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
@@ -99,12 +102,12 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
 }
 
 int on_http_url(http_parser *parser, const char *at, size_t length) {
-    log_msg(DEBUG, "On HTTP URL: %.*s", length, at);
+//    log_msg(DEBUG, "On HTTP URL: %.*s", length, at);
     return 0;
 }
 
 int on_http_body(http_parser *parser, const char *at, size_t length) {
-    log_msg(DEBUG, "On HTTP body: %.*s", length, at);
+//    log_msg(DEBUG, "On HTTP body: %.*s", length, at);
     connection_caa_t *conn_caa = parser->data;
 //    conn->buf_in = strrchr(at, '=') + 1;
 //    conn->len_in = length - (conn->buf_in - at);
@@ -114,9 +117,8 @@ int on_http_body(http_parser *parser, const char *at, size_t length) {
 }
 
 int on_http_complete(http_parser *parser) {
-    log_msg(DEBUG, "On HTTP complete");
+//    log_msg(DEBUG, "On HTTP complete");
     connection_caa_t *conn_caa = parser->data;
-    http_parser_init(&conn_caa->parser, HTTP_REQUEST);
 
     // TODO call local dubbo provider
 
@@ -130,23 +132,26 @@ int on_http_complete(http_parser *parser) {
     return 0;
 }
 
-void write_to_consumer_agent(aeEventLoop *el, int fd, void *privdata, int mask) {
+void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_caa_t *conn_caa = privdata;
 
-    char *data = "OK";
+    char *data = "REDIS";
     char buf[128];
     sprintf(buf, "HTTP/1.1 200 OK\r\n"
                  "Content-Length: %ld\r\n"
                  "\r\n"
                  "%s", strlen(data), data);
 
-    ssize_t nwrite = write(conn_caa->fd, buf, strlen(buf));
+    ssize_t nwrite = write(fd, buf, strlen(buf));
 
     if (nwrite >= 0) {
         log_msg(DEBUG, "Write %d bytes to consumer agent for socket %d", nwrite, fd);
 
         if (nwrite == strlen(buf)) {
-            aeDeleteFileEvent(el, fd, AE_WRITABLE);
+            aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
+            http_parser_init(&conn_caa->parser, HTTP_REQUEST);
+        } else {
+            log_msg(DEBUG, "Partial write for %d", fd);
         }
     }
 
@@ -156,7 +161,7 @@ void write_to_consumer_agent(aeEventLoop *el, int fd, void *privdata, int mask) 
             return;
         }
         log_msg(WARN, "Failed to write to consumer agent: %s", strerror(errno));
-        aeDeleteFileEvent(el, fd, AE_WRITABLE | AE_READABLE);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         close(fd);
     }
 }

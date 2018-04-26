@@ -9,8 +9,11 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <unistd.h>
+//#include <curl/curl.h>
+
+#ifdef MICRO_HTTP
 #include <microhttpd.h>
-#include <curl/curl.h>
+#endif
 
 #ifdef PROFILER
 #include <gperftools/profiler.h>

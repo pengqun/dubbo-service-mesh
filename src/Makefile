@@ -1,6 +1,8 @@
 
 #PROFILE := true
 #RELEASE := true
+#NO_LOG := true
+#MICRO_HTTP := true
 
 ODIR := ../out
 DEPDIR := ../deps
@@ -24,6 +26,13 @@ ifdef RELEASE
 CFLAGS += -O2
 else
 LDFLAGS += -rdynamic
+endif
+
+ifdef NO_LOG
+CFLAGS += -DNO_LOG
+endif
+ifdef MICRO_HTTP
+CFLAGS += -DMICRO_HTTP
 endif
 
 all: $(BIN)
