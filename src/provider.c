@@ -120,6 +120,9 @@ int on_http_complete(http_parser *parser) {
 //    log_msg(DEBUG, "On HTTP complete");
     connection_caa_t *conn_caa = parser->data;
 
+    // Reset buf pointer
+    conn_caa->nread = 0;
+
     // TODO call local dubbo provider
 
     // Write to consumer agent
@@ -173,7 +176,7 @@ void register_etcd_service(int server_port) {
     sprintf(etcd_key, "/dubbomesh/com.alibaba.dubbo.performance.demo.provider.IHelloService/%s:%d",
             ip_addr, server_port);
 
-    int ret = etcd_set(etcd_key, "", 600, 0);
+    int ret = etcd_set(etcd_key, "", 3600, 0);
     if (ret != 0) {
         log_msg(FATAL, "Failed to do etcd_set: %d", ret);
     }

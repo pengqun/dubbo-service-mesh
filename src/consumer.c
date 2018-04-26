@@ -4,7 +4,7 @@
 #include "anet.h"
 
 
-#define NUM_CONN_PER_PROVIDER 8
+#define NUM_CONN_PER_PROVIDER 64
 
 static char neterr[256];
 
@@ -31,7 +31,7 @@ void consumer_init() {
     discover_etcd_services();
 
     log_msg(DEBUG, "Init connection pool for consumer");
-    connection_ca_pool = PoolInit(1024, 1024, sizeof(connection_ca_t), NULL, NULL, NULL, NULL, NULL);
+    connection_ca_pool = PoolInit(512, 512, sizeof(connection_ca_t), NULL, NULL, NULL, NULL, NULL);
     PoolPrintSaturation(connection_ca_pool);
 
     log_msg(INFO, "Consumer init done");
@@ -44,6 +44,13 @@ void consumer_cleanup() {
 void consumer_http_handler(aeEventLoop *event_loop, int fd) {
     // Fetch a connection object from pool
     connection_ca_t *conn_ca = PoolGet(connection_ca_pool);
+    if (conn_ca == NULL) {
+        log_msg(WARN, "No connection object available, abort");
+        PoolReturn(connection_ca_pool, conn_ca);
+        close(fd);
+        return;
+    }
+    log_msg(DEBUG, "Fetched connection object from pool, active: %d", connection_ca_pool->outstanding);
     memset(conn_ca, 0, sizeof(connection_ca_t));
     conn_ca->fd = fd;
 
@@ -64,19 +71,23 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
         log_msg(DEBUG, "Read %d bytes from consumer for socket %d", nread, fd);
         conn_ca->nread_in += nread;
 
-        connection_apa_t *conn_apa = conn_ca->conn_apa;
+        // Reset buf_out pointers
+        conn_ca->nread_out = 0;
+        conn_ca->nwrite_out = 0;
 
-        // Release previous connection to remote agent
-        if (conn_ca->nread_in == nread && conn_apa != NULL) {
-            PoolReturn(conn_ca->conn_apa->endpoint->conn_pool, conn_apa);
-            conn_ca->conn_apa = NULL;
-            log_msg(DEBUG, "Release previous connection to %s:%d", conn_apa->endpoint->ip, conn_apa->endpoint->port);
-        }
+        connection_apa_t *conn_apa = conn_ca->conn_apa;
 
         if (conn_apa == NULL) {
             // Load balance: pick up a remote endpoint
             endpoint_t *endpoint = &endpoints[round_robin_id++ % num_endpoints];
             conn_apa = PoolGet(endpoint->conn_pool);
+            if (conn_apa == NULL) {
+                log_msg(WARN, "No connection to remote agent available, abort");
+                aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
+                PoolReturn(connection_ca_pool, conn_ca);
+                close(fd);
+                return;
+            }
             conn_ca->conn_apa = conn_apa;
             log_msg(DEBUG, "Pick up connection to %s:%d", conn_apa->endpoint->ip, conn_apa->endpoint->port);
         }
@@ -108,6 +119,7 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
     }
     aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
     PoolReturn(connection_ca_pool, conn_ca);
+    log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_ca_pool->outstanding);
     close(fd);
 }
 
@@ -122,6 +134,14 @@ void write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int 
         conn_ca->nwrite_in += nwrite;
         if (conn_ca->nwrite_in == conn_ca->nread_in) {
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
+
+            // Release current connection to remote agent
+            connection_apa_t *conn_apa = conn_ca->conn_apa;
+            if (conn_apa != NULL) {
+                PoolReturn(conn_apa->endpoint->conn_pool, conn_apa);
+                conn_ca->conn_apa = NULL;
+                log_msg(DEBUG, "Release connection to %s:%d", conn_apa->endpoint->ip, conn_apa->endpoint->port);
+            }
         }
     }
 
@@ -146,6 +166,10 @@ void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int
     if (nread > 0) {
         log_msg(DEBUG, "Read %d bytes from remote agent for socket %d", nread, fd);
         conn_ca->nread_out += nread;
+
+        // Reset buf_in pointers
+        conn_ca->nread_in = 0;
+        conn_ca->nwrite_in = 0;
 
         // Write back to consumer
         if (aeCreateFileEvent(event_loop, conn_ca->fd, AE_WRITABLE, write_to_consumer, conn_ca) == AE_ERR) {
@@ -215,6 +239,7 @@ void on_etcd_service_endpoint(const char *key, const char *value, void *arg) {
 
     endpoints[num_endpoints].ip = ip;
     endpoints[num_endpoints].port = atoi(port);
+//    endpoints[num_endpoints].pending = 0;
 
     // Set up connection pool to this endpoint
     endpoints[num_endpoints].conn_pool = PoolInit(

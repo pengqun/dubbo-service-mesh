@@ -23,8 +23,9 @@ LIBS += -lprofiler
 endif
 
 ifdef RELEASE
-CFLAGS += -O2
+CFLAGS += -O3
 else
+CFLAGS += -O0 -g
 LDFLAGS += -rdynamic
 endif
 

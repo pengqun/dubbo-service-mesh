@@ -62,9 +62,9 @@ static struct log_config log_conf[LOG_LEVEL_MAX][LOG_TO_DIRMAX] =
     },
     /*DEBUG*/
     {
-        { 1, LOG_OPT_TIME | LOG_OPT_BAR |LOG_OPT_POS },
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR | LOG_OPT_POS },
         { 0, 0 },
-        { 0, 0 },
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },
     },
     /* WARN */
     {

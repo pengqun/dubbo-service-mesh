@@ -41,6 +41,7 @@ typedef struct endpoint {
     char *ip;
     int port;
     Pool *conn_pool; // pool of connection_apa
+//    int pending;
 } endpoint_t;
 
 
