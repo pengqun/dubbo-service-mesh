@@ -22,8 +22,12 @@
 // Consumer Agent <-> Agent
 typedef struct connection_caa {
     int fd;
-    char buf[2048];
-    size_t nread;
+    char buf_in[2048];
+    size_t nread_in;
+
+    char buf_req[2048];
+    int len_req;
+    size_t nwrite_req;
 
     http_parser parser;
     aeEventLoop *event_loop;
@@ -33,8 +37,8 @@ typedef struct connection_caa {
 // Agent <-> Provider
 typedef struct connection_ap {
     int fd;
-    char buf[128];
-    size_t len;
+    char buf_resp[128];
+    size_t nread_resp;
 } connection_ap_t;
 
 void provider_init(int server_port, int dubbo_port);

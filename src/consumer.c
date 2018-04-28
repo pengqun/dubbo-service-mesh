@@ -3,7 +3,7 @@
 #include "http_parser.h"
 #include "anet.h"
 
-
+#define NUM_CONN_FOR_CONSUMER 512
 #define NUM_CONN_PER_PROVIDER 64
 
 static char neterr[256];
@@ -31,7 +31,8 @@ void consumer_init() {
     discover_etcd_services();
 
     log_msg(DEBUG, "Init connection pool for consumer");
-    connection_ca_pool = PoolInit(512, 512, sizeof(connection_ca_t), NULL, NULL, NULL, NULL, NULL);
+    connection_ca_pool = PoolInit(NUM_CONN_FOR_CONSUMER, NUM_CONN_FOR_CONSUMER,
+                                  sizeof(connection_ca_t), NULL, NULL, NULL, NULL, NULL);
     PoolPrintSaturation(connection_ca_pool);
 
     log_msg(INFO, "Consumer init done");
