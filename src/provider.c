@@ -250,20 +250,60 @@ void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, in
 
 void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_caa_t *conn_caa = privdata;
+//    connection_ap_t *conn_ap = conn_caa->conn_ap;
 
-    // Write to consumer agent
-    if (aeCreateFileEvent(conn_caa->event_loop, conn_caa->fd, AE_WRITABLE, write_to_consumer_agent, conn_caa) == AE_ERR) {
-        log_msg(WARN, "Failed to create writable event for write_to_consumer_agent");
-        PoolReturn(connection_caa_pool, conn_caa);
-        close(conn_caa->fd);
+    ssize_t nread = read(fd, conn_caa->buf_resp + conn_caa->nread_resp, sizeof(conn_caa->buf_resp) - conn_caa->nread_resp);
+    if (nread > 0) {
+        log_msg(DEBUG, "Read %d bytes from local provider for socket %d", nread, fd);
+
+        conn_caa->nread_resp += nread;
+
+        if (conn_caa->nread_resp > 16) {
+
+            uint32_t data_len = ntohl(*((uint32_t *) &conn_caa->buf_resp[12]));
+            log_msg(DEBUG, "Got data_len %d", data_len);
+
+            if (conn_caa->nread_resp < 16 + data_len) {
+                log_msg(DEBUG, "Incomplete response");
+                return;
+            }
+
+            // Write to consumer agent
+            if (aeCreateFileEvent(conn_caa->event_loop, conn_caa->fd, AE_WRITABLE, write_to_consumer_agent, conn_caa) == AE_ERR) {
+                log_msg(WARN, "Failed to create writable event for write_to_consumer_agent");
+                PoolReturn(connection_caa_pool, conn_caa);
+                close(conn_caa->fd);
+            }
+            return;
+        }
+
     }
+
+    if (nread == 0) {
+        log_msg(WARN, "Local provider closed connection");
+    }
+    if (nread < 0) {
+        if (errno == EAGAIN) {
+            log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
+            return;
+        }
+        log_msg(WARN, "Failed to read from local provider: %s", strerror(errno));
+    }
+    aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
+    close(fd);
+    aeDeleteFileEvent(event_loop, conn_caa->fd, AE_WRITABLE | AE_READABLE);
+    close(conn_caa->fd);
 }
 
 void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_caa_t *conn_caa = privdata;
-    connection_ap_t *conn_ap = conn_caa->conn_ap;
+//    connection_ap_t *conn_ap = conn_caa->conn_ap;
 
-    char *data = "REDIS";
+//    char *data = "REDIS";
+
+    char *data = conn_caa->buf_resp + 18;
+    conn_caa->buf_resp[conn_caa->nread_resp] = '\0';
+
     char buf[128];
     sprintf(buf, "HTTP/1.1 200 OK\r\n"
                  "Content-Length: %ld\r\n"
@@ -280,9 +320,8 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
             http_parser_init(&conn_caa->parser, HTTP_REQUEST);
 
             // Reset buf pointer
-            conn_ap->nread_resp = 0;
-
-            // Release connection
+            conn_caa->nread_resp = 0;
+            conn_caa->nread_resp = 0;
         } else {
             log_msg(DEBUG, "Partial write for %d", fd);
         }

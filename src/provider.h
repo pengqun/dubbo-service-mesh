@@ -29,6 +29,9 @@ typedef struct connection_caa {
     int len_req;
     size_t nwrite_req;
 
+    char buf_resp[128];
+    size_t nread_resp;
+
     http_parser parser;
     aeEventLoop *event_loop;
     struct connection_ap *conn_ap;
@@ -37,8 +40,6 @@ typedef struct connection_caa {
 // Agent <-> Provider
 typedef struct connection_ap {
     int fd;
-    char buf_resp[128];
-    size_t nread_resp;
 } connection_ap_t;
 
 void provider_init(int server_port, int dubbo_port);
