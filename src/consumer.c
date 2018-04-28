@@ -254,16 +254,24 @@ int init_connection_apa(void *elem, void *data) {
     memset(conn_apa, 0, sizeof(connection_apa_t));
     conn_apa->endpoint = endpoint;
 
-    int fd = anetTcpNonBlockConnect(neterr, endpoint->ip, endpoint->port);
-    if (errno != EINPROGRESS) {
-        log_msg(ERR, "Failed to connect to remote agent %s:%d", endpoint->ip, endpoint->port);
-        close(fd);
-        conn_apa->fd = -1;
-    } else {
-        anetEnableTcpNoDelay(NULL, fd);
-        conn_apa->fd = fd;
-        log_msg(DEBUG, "Build connection to remote agent %s:%d", endpoint->ip, endpoint->port);
-    }
+//    int fd = anetTcpNonBlockConnect(neterr, endpoint->ip, endpoint->port);
+    int fd;
+    do {
+        fd = anetTcpConnect(neterr, endpoint->ip, endpoint->port);
+        anetNonBlock(NULL, fd);
+
+        if (fd < 0) {
+            log_msg(WARN, "Failed to connect to remote agent %s:%d - %s", endpoint->ip, endpoint->port, neterr);
+            close(fd);
+            conn_apa->fd = -1;
+            sleep(1);
+        } else {
+            anetEnableTcpNoDelay(NULL, fd);
+            conn_apa->fd = fd;
+            log_msg(DEBUG, "Build connection to remote agent %s:%d", endpoint->ip, endpoint->port);
+        }
+    } while (fd < 0);
+
     return 1;
 }
 

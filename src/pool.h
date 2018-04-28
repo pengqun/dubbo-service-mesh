@@ -30,8 +30,6 @@
 #ifndef __UTIL_POOL_H__
 #define __UTIL_POOL_H__
 
-#include <unitypes.h>
-
 #define POOL_BUCKET_PREALLOCATED    (1 << 0)
 
 /* pool bucket structure */

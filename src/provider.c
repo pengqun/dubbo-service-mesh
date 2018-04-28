@@ -3,17 +3,19 @@
 //
 
 #include <ctype.h>
+#include <arpa/inet.h>
 #include "provider.h"
 #include "util.h"
 #include "etcd.h"
 #include "anet.h"
 
 
-#define INTERFACE "en0"
+//#define INTERFACE "en0"
 //#define INTERFACE "eth0"
+#define INTERFACE "docker0"
 
-#define NUM_CONN_FOR_CONSUMER 512
-#define NUM_CONN_TO_PROVIDER NUM_CONN_FOR_CONSUMER
+#define NUM_CONN_FOR_CONSUMER 256
+#define NUM_CONN_TO_PROVIDER 256
 
 static char neterr[256];
 
@@ -155,8 +157,9 @@ int on_http_complete(http_parser *parser) {
     buf += 4;
 
     // request id
-    *((uint64_t *) buf) = htonll(cur_request_id);
-    buf += 8;
+    buf += 4;
+    *((uint32_t *) buf) = htonl(cur_request_id);
+    buf += 4;
 
     // data length
     char *buf_len = buf;
@@ -249,14 +252,14 @@ int on_http_complete(http_parser *parser) {
     return 0;
 }
 
-void dump_conn(connection_caa_t *conn_caa) {
-    log_msg(DEBUG, "%d %d", conn_caa->nwrite_req, conn_caa->len_req);
-}
+//void dump_conn(connection_caa_t *conn_caa) {
+//    log_msg(DEBUG, "%d %d", conn_caa->nwrite_req, conn_caa->len_req);
+//}
 
 void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_caa_t *conn_caa = privdata;
 
-    dump_conn(conn_caa);
+//    dump_conn(conn_caa);
     ssize_t nwrite = write(fd, conn_caa->buf_req + conn_caa->nwrite_req,
                            (size_t) (conn_caa->len_req - conn_caa->nwrite_req));
 
@@ -273,8 +276,14 @@ void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, in
             log_msg(WARN, "Got EAGAIN on write: %s", strerror(errno));
             return;
         }
-        log_msg(WARN, "Failed to write to local provider: %s", strerror(errno));
-        dump_conn(conn_caa);
+        log_msg(WARN, "Failed to write to local provider with socket %d: %s", fd, strerror(errno));
+
+        for (int i = 0; i < 10; i++) {
+            log_msg(DEBUG, "%d ", write(fd, conn_caa->buf_req + conn_caa->nwrite_req,
+                  (size_t) (conn_caa->len_req - conn_caa->nwrite_req)));
+        }
+
+//        dump_conn(conn_caa);
         exit(-1);
     }
 }
@@ -298,7 +307,7 @@ void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, i
             }
 
             // Write to consumer agent
-            if (aeCreateFileEvent(conn_caa->event_loop, conn_caa->fd, AE_WRITABLE, write_to_consumer_agent, conn_caa) == AE_ERR) {
+            if (aeCreateFileEvent(event_loop, conn_caa->fd, AE_WRITABLE, write_to_consumer_agent, conn_caa) == AE_ERR) {
                 log_msg(WARN, "Failed to create writable event for write_to_consumer_agent");
                 close(conn_caa->fd);
                 close(fd);
@@ -374,7 +383,7 @@ void register_etcd_service(int server_port) {
 
     int ret = etcd_set(etcd_key, "", 3600, 0);
     if (ret != 0) {
-        log_msg(FATAL, "Failed to do etcd_set: %d", ret);
+        log_msg(ERR, "Failed to do etcd_set: %d", ret);
     }
     log_msg(INFO, "Register service at: %s", etcd_key);
 }
@@ -392,16 +401,24 @@ int init_connection_ap(void *elem, void *data) {
     char *addr = "127.0.0.1";
     int port = (int) data;
 
-    int fd = anetTcpNonBlockConnect(neterr, addr, port);
-    if (errno != EINPROGRESS) {
-        log_msg(ERR, "Failed to connect to local provider %s:%d", addr, port);
-        close(fd);
-        conn_ap->fd = -1;
-    } else {
-        anetEnableTcpNoDelay(NULL, fd);
-        log_msg(DEBUG, "Build connection to local provider %s:%d", addr, port);
-        conn_ap->fd = fd;
-    }
+//    int fd = anetTcpNonBlockConnect(neterr, addr, port);
+    do {
+        int fd = anetTcpConnect(neterr, addr, port);
+        anetNonBlock(NULL, fd);
+
+        if (fd < 0) {
+            log_msg(WARN, "Failed to connect to local provider %s:%d - %s", addr, port, neterr);
+            close(fd);
+            conn_ap->fd = -1;
+            sleep(1);
+        } else {
+            anetEnableTcpNoDelay(NULL, fd);
+            log_msg(DEBUG, "Build connection to local provider %s:%d", addr, port);
+            conn_ap->fd = fd;
+        }
+
+    } while (conn_ap->fd < 0);
+
     return 1;
 }
 

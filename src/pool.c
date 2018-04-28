@@ -40,6 +40,10 @@
 
 #include <memory.h>
 #include <stdlib.h>
+#include <stddef.h>
+#include <unistd.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include "pool.h"
 #include "log.h"
 
