@@ -6,7 +6,6 @@
 #include "util.h"
 #include "etcd.h"
 #include "anet.h"
-//#include <jansson.h>
 
 
 #define INTERFACE "en0"
@@ -129,10 +128,8 @@ int on_http_url(http_parser *parser, const char *at, size_t length) {
 int on_http_body(http_parser *parser, const char *at, size_t length) {
 //    log_msg(DEBUG, "On HTTP body: %.*s", length, at);
     connection_caa_t *conn_caa = parser->data;
-//    conn->buf_in = strrchr(at, '=') + 1;
-//    conn->len_in = length - (conn->buf_in - at);
-//    log_msg(DEBUG, "Buf: %.*s", conn->len_in, conn->buf_in);
-//    log_msg(DEBUG, "Received buf_in len_in: %d", conn->len_in);
+    conn_caa->body = (char *) at;
+    conn_caa->len_body = length;
     return 0;
 }
 
@@ -156,15 +153,47 @@ int on_http_complete(http_parser *parser) {
     char *buf_len = buf;
     buf += 4;
 
+    // real data
+    char *body = conn_caa->body;
+    size_t len_body = conn_caa->len_body;
+
+    // XXX
+    char *service = strchr(body, '=') + 1;
+    body = strchr(service, '&');
+    int service_len = (int) (body - service);
+    char *method = strchr(body, '=') + 1;
+    body = strchr(method, '&');
+    int method_len = (int) (body - method);
+    char *type = strchr(body, '=') + 1;
+    body = strchr(type, '&');
+    int type_len = (int) (body - type);
+    char *arg = strchr(body, '=') + 1;
+    body = strchr(arg, '&');
+    int arg_len = (int) (body - arg);
+
+    /*
+        "\"2.0.1\"\n"  // dubbo version
+        "\"com.alibaba.dubbo.performance.demo.provider.IHelloService\"\n" // service name
+        "null\n"  // service version
+        "\"hash\"\n" // method name
+        "\"Ljava/lang/String;\"\n" // method parameter types
+        "\"123ab\"\n" // method arguments
+        "{\"path\":\"com.alibaba.dubbo.performance.demo.provider.IHelloService\"}\n" // attachments
+     */
+
     int data_len = sprintf(buf,
-            "\"2.0.1\"\n"  // dubbo version
-            "\"com.alibaba.dubbo.performance.demo.provider.IHelloService\"\n" // service name
-            "null\n"  // service version
-            "\"hash\"\n" // method name
-            "\"Ljava/lang/String;\"\n" // method parameter types
-            "\"123ab\"\n" // method arguments
-            "{\"path\":\"com.alibaba.dubbo.performance.demo.provider.IHelloService\"}\n" // attachments
+                           "\"2.0.1\"\n"  // dubbo version
+                           "\"%.*s\"\n"   // service name
+                           "null\n"       // service version
+                           "\"%.*s\"\n"   // method name
+                           "\"%.*s\"\n"   // method parameter types
+                           "\"%.*s\"\n"   // method arguments
+                           "{\"path\":\"%.*s\"}\n", // attachments
+                           service_len, service, method_len, method, type_len, type, arg_len, arg,
+                           service_len, service
     );
+    log_msg(DEBUG, "Request: %.*s", data_len, buf);
+
     *((uint32_t *) buf_len) = htonl(data_len);
 
     conn_caa->len_req = data_len + 16;

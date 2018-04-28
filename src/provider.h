@@ -25,6 +25,9 @@ typedef struct connection_caa {
     char buf_in[2048];
     size_t nread_in;
 
+    char *body;
+    size_t len_body;
+
     char buf_req[2048];
     int len_req;
     size_t nwrite_req;
