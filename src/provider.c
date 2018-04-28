@@ -12,7 +12,7 @@
 #define INTERFACE "en0"
 //#define INTERFACE "eth0"
 
-#define NUM_CONN_FOR_CONSUMER 256
+#define NUM_CONN_FOR_CONSUMER 512
 #define NUM_CONN_TO_PROVIDER NUM_CONN_FOR_CONSUMER
 
 static char neterr[256];
@@ -75,6 +75,10 @@ void provider_cleanup() {
 void provider_http_handler(aeEventLoop *event_loop, int fd) {
     // Fetch a connection object from pool
     connection_caa_t *conn_caa = PoolGet(connection_caa_pool);
+    if (conn_caa == NULL) {
+        log_msg(FATAL, "No connection object available, abort");
+        exit(-1);
+    }
     memset(conn_caa, 0, sizeof(connection_caa_t));
     conn_caa->fd = fd;
     http_parser_init(&conn_caa->parser, HTTP_REQUEST);
@@ -106,8 +110,9 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
         if (nread == 0) {
             log_msg(WARN, "Consumer agent closed connection");
         } else {
-            log_msg(WARN, "Failed to parse HTTP response from remote agent");
+            log_msg(ERR, "Failed to parse HTTP response from remote agent");
         }
+        exit(-1);
     }
 
     if (nread < 0) {
@@ -115,7 +120,8 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
-        log_msg(WARN, "Failed to read from consumer agent: %s", strerror(errno));
+        log_msg(ERR, "Failed to read from consumer agent: %s", strerror(errno));
+        exit(-1);
     }
 
     // Shut down socket fd and return connection object
@@ -195,7 +201,7 @@ int on_http_complete(http_parser *parser) {
                            "\"%.*s\"\n"   // method parameter types
                            "\"%.*s\"\n"   // method arguments
                            "{\"path\":\"%.*s\"}\n", // attachments
-                           service_len, service, method_len, method, strlen(decoded), decoded, arg_len, arg,
+                           service_len, service, method_len, method, (int) strlen(decoded), decoded, arg_len, arg,
                            service_len, service
     );
 //    log_msg(DEBUG, "Request: %.*s", data_len, buf);
@@ -220,9 +226,8 @@ int on_http_complete(http_parser *parser) {
         // Fetch a connection to local provider
         conn_ap = PoolGet(connection_ap_pool);
         if (conn_ap == NULL) {
-            log_msg(WARN, "No connection to provider available, abort");
-            close(conn_caa->fd);
-            return 0;
+            log_msg(FATAL, "No connection to provider available, abort");
+            exit(-1);
         }
         conn_caa->conn_ap = conn_ap;
         log_msg(DEBUG, "Binding connection %d to %d", conn_caa->fd, conn_ap->fd);
@@ -230,23 +235,28 @@ int on_http_complete(http_parser *parser) {
 
     // Write to local dubbo provider
     if (aeCreateFileEvent(conn_caa->event_loop, conn_ap->fd, AE_WRITABLE, write_to_local_provider, conn_caa) == AE_ERR) {
-        log_msg(WARN, "Failed to create writable event for write_to_local_provider");
-        close(conn_caa->fd);
+        log_msg(ERR, "Failed to create writable event for write_to_local_provider");
+        exit(-1);
     }
 
     // Read from local dubbo provider
     if (aeCreateFileEvent(conn_caa->event_loop, conn_ap->fd, AE_READABLE, read_from_local_provider, conn_caa) == AE_ERR) {
-        log_msg(WARN, "Failed to create readable event for read_from_local_provider");
-        close(conn_caa->fd);
+        log_msg(ERR, "Failed to create readable event for read_from_local_provider");
+        exit(-1);
     }
 #endif
 
     return 0;
 }
 
+void dump_conn(connection_caa_t *conn_caa) {
+    log_msg(DEBUG, "%d %d", conn_caa->nwrite_req, conn_caa->len_req);
+}
+
 void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_caa_t *conn_caa = privdata;
 
+    dump_conn(conn_caa);
     ssize_t nwrite = write(fd, conn_caa->buf_req + conn_caa->nwrite_req,
                            (size_t) (conn_caa->len_req - conn_caa->nwrite_req));
 
@@ -264,8 +274,8 @@ void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, in
             return;
         }
         log_msg(WARN, "Failed to write to local provider: %s", strerror(errno));
-        close(conn_caa->fd);
-        close(fd);
+        dump_conn(conn_caa);
+        exit(-1);
     }
 }
 
@@ -299,17 +309,16 @@ void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, i
     }
 
     if (nread == 0) {
-        log_msg(WARN, "Local provider closed connection");
+        log_msg(ERR, "Local provider closed connection");
     }
     if (nread < 0) {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
-        log_msg(WARN, "Failed to read from local provider: %s", strerror(errno));
+        log_msg(ERR, "Failed to read from local provider: %s", strerror(errno));
     }
-    close(conn_caa->fd);
-    close(fd);
+    exit(-1);
 }
 
 void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
@@ -341,7 +350,8 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
             conn_caa->nwrite_req = 0;
             conn_caa->nread_resp = 0;
         } else {
-            log_msg(DEBUG, "Partial write for %d", fd);
+            // TODO
+            log_msg(WARN, "Partial write for %d", fd);
         }
     }
 
@@ -350,9 +360,8 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
-        log_msg(WARN, "Failed to write to consumer agent: %s", strerror(errno));
-        close(conn_caa->fd);
-        close(fd);
+        log_msg(ERR, "Failed to write to consumer agent: %s", strerror(errno));
+        exit(-1);
     }
 }
 

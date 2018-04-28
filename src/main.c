@@ -133,7 +133,7 @@ void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
                 log_msg(WARN, "Failed to accept client connection: %s", neterr);
             return;
         }
-        log_msg(DEBUG, "Accept client connection: %s:%d - %d", client_ip, client_port, client_fd);
+        log_msg(DEBUG, "Accept client connection: %s:%d with socket %d", client_ip, client_port, client_fd);
 
         anetNonBlock(NULL, client_fd);
         anetEnableTcpNoDelay(NULL, client_fd);
