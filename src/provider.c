@@ -1,25 +1,18 @@
-//
-// Created by Chu Heng on 2018/4/25.
-//
-
-#include <ctype.h>
-#include <arpa/inet.h>
 #include "provider.h"
-#include "util.h"
-#include "etcd.h"
-#include "anet.h"
 
 //#define INTERFACE "en0"
 //#define INTERFACE "eth0"
 #define INTERFACE "docker0"
 
 // Adjustable params
-#define NUM_CONN_FOR_CONSUMER 512
-#define NUM_CONN_TO_PROVIDER 256
+#define NUM_CONN_FOR_CONSUMER 1024
+#define NUM_CONN_TO_PROVIDER 1024
 
 static char neterr[256];
-
 static char etcd_key[128];
+
+static char resp_buffer[128];
+static size_t pre_len = 0;
 
 static Pool *connection_caa_pool = NULL;
 static Pool *connection_ap_pool = NULL;
@@ -46,7 +39,7 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
 
 void abort_connection_caa(aeEventLoop *event_loop, connection_caa_t *conn_caa) ;
 
-char *url_decode(char *dStr, const char *str, int length) ;
+char *url_decode(char *target, const char *str, int length) ;
 
 void provider_init(int server_port, int dubbo_port) {
     log_msg(INFO, "Provider init begin");
@@ -65,6 +58,9 @@ void provider_init(int server_port, int dubbo_port) {
     parser_settings.on_url = on_http_url;
     parser_settings.on_body = on_http_body;
     parser_settings.on_message_complete = on_http_complete;
+
+    sprintf(resp_buffer, "HTTP/1.1 200 OK\r\nContent-Length:");
+    pre_len = strlen(resp_buffer);
 
     log_msg(INFO, "Provider init done");
 }
@@ -127,6 +123,10 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
         abort_connection_caa(event_loop, conn_caa);
 
     } else {
+        // Also feed zero input to HTTP parser
+        http_parser_execute(&conn_caa->parser, &parser_settings,
+                            conn_caa->buf_in + conn_caa->nread_in, (size_t) nread);
+
         log_msg(ERR, "Consumer agent closed connection for socket %d", fd);
         close(fd);
         aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
@@ -173,7 +173,7 @@ int on_http_complete(http_parser *parser) {
     char *body = conn_caa->body;
     size_t len_body = conn_caa->len_body;
 
-    // can do better
+    // XXX can do better
     char *service = strchr(body, '=') + 1;
     body = strchr(service, '&');
     int service_len = (int) (body - service);
@@ -186,9 +186,15 @@ int on_http_complete(http_parser *parser) {
     char *arg = strchr(body, '=') + 1;
     int arg_len = (int) (conn_caa->body + len_body - arg);
 
-    // url decode for parameter type
-    char decoded[128];
-    url_decode(decoded, type, type_len);
+//    // url decode for parameter type
+//    char decoded[128];
+//    url_decode(decoded, type, type_len);
+
+    // No runtime decoding, just look up pre-defined mapping (or better: prefix tree)
+    if (strncmp(type, "Ljava%2Flang%2FString%3B", (size_t) type_len) == 0) {
+        type = "Ljava/lang/String;";
+        type_len = (int) strlen(type);
+    }
 
     /*
        "\"2.0.1\"\n"  // dubbo version
@@ -208,7 +214,7 @@ int on_http_complete(http_parser *parser) {
                            "\"%.*s\"\n"   // method parameter types
                            "\"%.*s\"\n"   // method arguments
                            "{\"path\":\"%.*s\"}\n", // attachments
-                           service_len, service, method_len, method, (int) strlen(decoded), decoded, arg_len, arg,
+                           service_len, service, method_len, method, type_len, type, arg_len, arg,
                            service_len, service
     );
 //    log_msg(DEBUG, "Request: %.*s", data_len, buf);
@@ -222,7 +228,7 @@ int on_http_complete(http_parser *parser) {
     ++cur_request_id;
 
 #if 0
-    // Skip dubbo and return imediatly
+    // For testing: skip dubbo and return imediatly
     if (aeCreateFileEvent(conn_caa->event_loop, conn_caa->fd, AE_WRITABLE, write_to_consumer_agent, conn_caa) == AE_ERR) {
         log_msg(ERR, "Failed to create writable event for write_to_consumer_agent");
         close(conn_caa->fd);
@@ -331,19 +337,17 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
 //    char *data = "hah";
     char *data = conn_caa->buf_resp + 18;
     conn_caa->buf_resp[conn_caa->nread_resp - 1] = '\0'; // ignore last newline
+    size_t data_len = conn_caa->nread_resp - 19;
 
-    char buf[128];
-    sprintf(buf, "HTTP/1.1 200 OK\r\n"
-                 "Content-Length: %ld\r\n"
-                 "\r\n"
-                 "%s", strlen(data), data);
+    sprintf(resp_buffer + pre_len, "%ld\r\n\r\n%s", data_len, data);
+    size_t buf_len = pre_len + data_len;
 
-    ssize_t nwrite = write(fd, buf, strlen(buf));
+    ssize_t nwrite = write(fd, resp_buffer, buf_len);
 
     if (nwrite >= 0) {
         log_msg(DEBUG, "Write %d bytes to consumer agent for socket %d", nwrite, fd);
 
-        if (nwrite == strlen(buf)) {
+        if (nwrite == buf_len) {
             // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
             http_parser_init(&conn_caa->parser, HTTP_REQUEST);
@@ -423,45 +427,46 @@ void cleanup_connection_ap(void *elem) {
     }
 }
 
-char *url_decode(char *dStr, const char *str, int length) {
-    int d = 0; /* whether or not the string is decoded */
 
-    char eStr[] = "00"; /* for a hex code */
 
-    strncpy(dStr, str, length);
-
-    while(!d) {
-        d = 1;
-        int i; /* the counter for the string */
-
-        for(i=0;i<strlen(dStr);++i) {
-
-            if(dStr[i] == '%') {
-                if(dStr[i+1] == 0)
-                    return dStr;
-
-                if(isxdigit(dStr[i+1]) && isxdigit(dStr[i+2])) {
-
-                    d = 0;
-
-                    /* combine the next to numbers into one */
-                    eStr[0] = dStr[i+1];
-                    eStr[1] = dStr[i+2];
-
-                    /* convert it to decimal */
-                    long int x = strtol(eStr, NULL, 16);
-
-                    /* remove the hex */
-                    memmove(&dStr[i+1], &dStr[i+3], strlen(&dStr[i+3])+1);
-
-                    dStr[i] = x;
-                }
-            }
-        }
-    }
-
-    return dStr;
-}
+//char *url_decode(char *target, const char *str, int length) {
+//    int d = 0; /* whether or not the string is decoded */
+//    char eStr[] = "00"; /* for a hex code */
+//
+//    strncpy(target, str, length);
+//
+//    while (!d) {
+//        d = 1;
+//        int i; /* the counter for the string */
+//
+//        for (i=0; i< strlen(target) ;++i) {
+//
+//            if(target[i] == '%') {
+//                if(target[i+1] == 0)
+//                    return target;
+//
+//                if(isxdigit(target[i+1]) && isxdigit(target[i+2])) {
+//
+//                    d = 0;
+//
+//                    /* combine the next to numbers into one */
+//                    eStr[0] = target[i+1];
+//                    eStr[1] = target[i+2];
+//
+//                    /* convert it to decimal */
+//                    long int x = strtol(eStr, NULL, 16);
+//
+//                    /* remove the hex */
+//                    memmove(&target[i+1], &target[i+3], strlen(&target[i+3])+1);
+//
+//                    target[i] = x;
+//                }
+//            }
+//        }
+//    }
+//
+//    return target;
+//}
 
 void abort_connection_caa(aeEventLoop *event_loop, connection_caa_t *conn_caa) {
     close(conn_caa->fd);

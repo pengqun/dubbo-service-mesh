@@ -1,20 +1,12 @@
 #ifndef MESH_AGENT_NATIVE_CONSUMER_H
 #define MESH_AGENT_NATIVE_CONSUMER_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <getopt.h>
-#include <memory.h>
-#include <errno.h>
-#include <signal.h>
-#include <sys/time.h>
-#include <unistd.h>
-
-//#define DEBUG_THIS_FILE
-#include "log.h"
-
+#include "common.h"
 #include "pool.h"
 #include "ae.h"
+#include "etcd.h"
+#include "http_parser.h"
+#include "anet.h"
 
 // Consumer <-> Agent
 typedef struct connection_ca {

@@ -1,11 +1,8 @@
 #include "consumer.h"
-#include "etcd.h"
-#include "http_parser.h"
-#include "anet.h"
 
 // Adjustable params
-#define NUM_CONN_FOR_CONSUMER 256
-#define NUM_CONN_PER_PROVIDER 256
+#define NUM_CONN_FOR_CONSUMER 1024
+#define NUM_CONN_PER_PROVIDER 512
 //#define LOAD_BALANCE_THRESHOLD 10
 
 static char neterr[256];
@@ -207,12 +204,6 @@ void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask
         if (conn_ca->nwrite_out == conn_ca->nread_out) {
             // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
-
-            // Reset buf pointers
-//            conn_ca->nread_in = 0;
-//            conn_ca->nwrite_in = 0;
-//            conn_ca->nread_out = 0;
-//            conn_ca->nwrite_out = 0;
 
             // Release current connection to remote agent
             connection_apa_t *conn_apa = conn_ca->conn_apa;
