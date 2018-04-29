@@ -8,6 +8,8 @@
 #include <errno.h>
 #include <string.h>
 #include <stdarg.h>
+#include <sys/time.h>
+#include <time.h>
 #include "log.h"
 
 /*
@@ -152,11 +154,30 @@ static inline void log_to_file(int32_t type, char *time, const char *pos,
 void _log_msg(int32_t type, const char *file, int32_t  line, const char *format, ...)
 {
     /* get time string */
-    struct tm local_time;
-    char time_str[32]   = {0};
-    time_t now = time(NULL);
-    localtime_r(&now, &local_time);
-    strftime(time_str, sizeof(time_str), "%e %b %T", &local_time);
+//    struct tm local_time;
+//    char time_str[32]   = {0};
+//    time_t now = time(NULL);
+//    localtime_r(&now, &local_time);
+//    strftime(time_str, sizeof(time_str), "%e %b %T", &local_time);
+
+    char buffer[26];
+    char time_str[32];
+    int millisec;
+    struct tm* tm_info;
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+
+    millisec = (int) (tv.tv_usec / 1000.0); // Round to nearest millisec
+    if (millisec>=1000) { // Allow for rounding up to nearest second
+        millisec -=1000;
+        tv.tv_sec++;
+    }
+
+    tm_info = localtime(&tv.tv_sec);
+
+    strftime(buffer, 26, "%Y:%m:%d %H:%M:%S", tm_info);
+    sprintf(time_str, "%s.%03d", buffer, millisec);
 
     /* get position string */
     char pos_str[32]  = {0};

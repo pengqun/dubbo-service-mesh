@@ -14,8 +14,8 @@
 #define INTERFACE "docker0"
 
 // Adjustable params
-#define NUM_CONN_FOR_CONSUMER 1024
-#define NUM_CONN_TO_PROVIDER 1024
+#define NUM_CONN_FOR_CONSUMER 512
+#define NUM_CONN_TO_PROVIDER 256
 
 static char neterr[256];
 
@@ -127,7 +127,7 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
         abort_connection_caa(event_loop, conn_caa);
 
     } else {
-        log_msg(WARN, "Consumer agent closed connection for socket %d", fd);
+        log_msg(ERR, "Consumer agent closed connection for socket %d", fd);
         close(fd);
         aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         PoolReturn(connection_caa_pool, conn_caa);
@@ -224,7 +224,7 @@ int on_http_complete(http_parser *parser) {
 #if 0
     // Skip dubbo and return imediatly
     if (aeCreateFileEvent(conn_caa->event_loop, conn_caa->fd, AE_WRITABLE, write_to_consumer_agent, conn_caa) == AE_ERR) {
-        log_msg(WARN, "Failed to create writable event for write_to_consumer_agent");
+        log_msg(ERR, "Failed to create writable event for write_to_consumer_agent");
         close(conn_caa->fd);
     }
 #else
@@ -307,7 +307,7 @@ void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, i
 
             // Write back to consumer agent
             if (aeCreateFileEvent(event_loop, conn_caa->fd, AE_WRITABLE, write_to_consumer_agent, conn_caa) == AE_ERR) {
-                log_msg(WARN, "Failed to create writable event for write_to_consumer_agent");
+                log_msg(ERR, "Failed to create writable event for write_to_consumer_agent");
                 abort_connection_caa(event_loop, conn_caa);
             }
         }
