@@ -4,7 +4,7 @@
 #include "anet.h"
 
 // Adjustable params
-#define NUM_CONN_FOR_CONSUMER 512
+#define NUM_CONN_FOR_CONSUMER 1024
 #define NUM_CONN_PER_PROVIDER 512
 #define LOAD_BALANCE_THRESHOLD 10
 
@@ -30,8 +30,6 @@ void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask
 
 void abort_connection_ca(aeEventLoop *event_loop, connection_ca_t *conn_ca) ;
 
-void abort_connection_apa(aeEventLoop *event_loop, connection_apa_t *conn_apa) ;
-
 void consumer_init() {
     log_msg(INFO, "Consumer init begin");
     discover_etcd_services();
@@ -56,9 +54,10 @@ void consumer_http_handler(aeEventLoop *event_loop, int fd) {
         close(fd);
         return;
     }
+    log_msg(DEBUG, "Fetched connection object from pool, active: %d", connection_ca_pool->outstanding);
+
     memset(conn_ca, 0, sizeof(connection_ca_t));
     conn_ca->fd = fd;
-    log_msg(DEBUG, "Fetched connection object from pool, active: %d", connection_ca_pool->outstanding);
 
     // Read from consumer
     if (aeCreateFileEvent(event_loop, fd, AE_READABLE, read_from_consumer, conn_ca) == AE_ERR) {
@@ -118,7 +117,7 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
             log_msg(WARN, "Got EAGAIN on read_from_consumer: %s", strerror(errno));
             return;
         }
-        log_msg(ERR, "Failed to read from consumer, abort connection: %s", strerror(errno));
+        log_msg(ERR, "Failed to read from consumer: %s", strerror(errno));
         abort_connection_ca(event_loop, conn_ca);
 
     } else {
@@ -263,16 +262,15 @@ int init_connection_apa(void *elem, void *data) {
     int fd;
     do {
         fd = anetTcpConnect(neterr, endpoint->ip, endpoint->port);
-
         if (fd < 0) {
-            log_msg(WARN, "Failed to connect to remote agent %s:%d - %s, Sleep 1 seconds to retry late",
+            log_msg(WARN, "Failed to connect to remote agent %s:%d - %s, Sleep 1 seconds to retry later",
                     endpoint->ip, endpoint->port, neterr);
             sleep(1);
         } else {
             anetNonBlock(NULL, fd);
             anetEnableTcpNoDelay(NULL, fd);
             conn_apa->fd = fd;
-            log_msg(DEBUG, "Build connection to remote agent %s:%d", endpoint->ip, endpoint->port);
+            log_msg(DEBUG, "Build connection to remote agent %s:%d with socket %d", endpoint->ip, endpoint->port, fd);
         }
     } while (fd < 0);
 

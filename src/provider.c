@@ -9,13 +9,13 @@
 #include "etcd.h"
 #include "anet.h"
 
-
 //#define INTERFACE "en0"
 //#define INTERFACE "eth0"
 #define INTERFACE "docker0"
 
+// Adjustable params
 #define NUM_CONN_FOR_CONSUMER 1024
-#define NUM_CONN_TO_PROVIDER 512
+#define NUM_CONN_TO_PROVIDER 1024
 
 static char neterr[256];
 
@@ -26,7 +26,7 @@ static Pool *connection_ap_pool = NULL;
 
 static http_parser_settings parser_settings;
 
-static uint64_t cur_request_id = 1;
+static uint32_t cur_request_id = 1;
 
 
 void register_etcd_service(int server_port) ;
@@ -44,19 +44,20 @@ void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, in
 void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
 void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
 
-/* Function: urlDecode */
-char *urlDecode(char *dStr, const char *str, int length) ;
+void abort_connection_caa(aeEventLoop *event_loop, connection_caa_t *conn_caa) ;
+
+char *url_decode(char *dStr, const char *str, int length) ;
 
 void provider_init(int server_port, int dubbo_port) {
     log_msg(INFO, "Provider init begin");
     register_etcd_service(server_port);
 
-    log_msg(DEBUG, "Init HTTP connection pool for provider");
+    log_msg(INFO, "Init HTTP connection pool");
     connection_caa_pool = PoolInit(NUM_CONN_FOR_CONSUMER, NUM_CONN_FOR_CONSUMER,
                                    sizeof(connection_caa_t), NULL, NULL, NULL, NULL, NULL);
     PoolPrintSaturation(connection_caa_pool);
 
-    log_msg(DEBUG, "Init Dubbo connection pool for provider");
+    log_msg(INFO, "Init Dubbo connection pool");
     connection_ap_pool = PoolInit(NUM_CONN_TO_PROVIDER, NUM_CONN_TO_PROVIDER, sizeof(connection_caa_t),
                                    NULL, init_connection_ap, (void *) (uint64_t) dubbo_port, cleanup_connection_ap, NULL);
     PoolPrintSaturation(connection_ap_pool);
@@ -78,57 +79,60 @@ void provider_http_handler(aeEventLoop *event_loop, int fd) {
     // Fetch a connection object from pool
     connection_caa_t *conn_caa = PoolGet(connection_caa_pool);
     if (conn_caa == NULL) {
-        log_msg(FATAL, "No connection object available, abort");
-        exit(-1);
+        log_msg(ERR, "No connection object available, abort connection");
+        close(fd);
+        return;
     }
+    log_msg(DEBUG, "Fetched connection object from pool, active: %d", connection_caa_pool->outstanding);
+
     memset(conn_caa, 0, sizeof(connection_caa_t));
     conn_caa->fd = fd;
-    http_parser_init(&conn_caa->parser, HTTP_REQUEST);
-    conn_caa->parser.data = conn_caa;
     conn_caa->event_loop = event_loop;
 
-    // Read from consumer
+    http_parser_init(&conn_caa->parser, HTTP_REQUEST);
+    conn_caa->parser.data = conn_caa;
+
+    // Read from consumer agent
     if (aeCreateFileEvent(event_loop, fd, AE_READABLE, read_from_consumer_agent, conn_caa) == AE_ERR) {
         log_msg(FATAL, "Failed to create readable event for read_from_consumer_agent");
-        exit(EXIT_FAILURE);
+        abort_connection_caa(event_loop, conn_caa);
     }
 }
 
 void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_caa_t *conn_caa = privdata;
 
-    ssize_t nread = read(fd, conn_caa->buf_in + conn_caa->nread_in, sizeof(conn_caa->buf_in) - conn_caa->nread_in);
-    if (nread >= 0) {
+    ssize_t nread = read(fd, conn_caa->buf_in + conn_caa->nread_in,
+                         sizeof(conn_caa->buf_in) - conn_caa->nread_in);
+
+    if (nread > 0) {
         log_msg(DEBUG, "Read %d bytes from consumer agent for socket %d", nread, fd);
 
+        // Feed input to HTTP parser
         size_t nparsed = http_parser_execute(&conn_caa->parser, &parser_settings,
                                              conn_caa->buf_in + conn_caa->nread_in, (size_t) nread);
         conn_caa->nread_in += nread;
 
-        if (nread > 0 && nparsed == nread) {
-            return;
-        }
-
-        if (nread == 0) {
-            log_msg(WARN, "Consumer agent closed connection");
-        } else {
+        if (nparsed != nread) {
             log_msg(ERR, "Failed to parse HTTP response from remote agent");
+            abort_connection_caa(event_loop, conn_caa);
         }
-        exit(-1);
-    }
 
-    if (nread < 0) {
+    } else if (nread < 0) {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
         log_msg(ERR, "Failed to read from consumer agent: %s", strerror(errno));
-        exit(-1);
-    }
+        abort_connection_caa(event_loop, conn_caa);
 
-    // Shut down socket fd and return connection object
-    aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
-    close(fd);
+    } else {
+        log_msg(WARN, "Consumer agent closed connection for socket %d", fd);
+        close(fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
+        PoolReturn(connection_caa_pool, conn_caa);
+        log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_caa_pool->outstanding);
+    }
 }
 
 int on_http_url(http_parser *parser, const char *at, size_t length) {
@@ -169,7 +173,7 @@ int on_http_complete(http_parser *parser) {
     char *body = conn_caa->body;
     size_t len_body = conn_caa->len_body;
 
-    // XXX
+    // can do better
     char *service = strchr(body, '=') + 1;
     body = strchr(service, '&');
     int service_len = (int) (body - service);
@@ -182,18 +186,18 @@ int on_http_complete(http_parser *parser) {
     char *arg = strchr(body, '=') + 1;
     int arg_len = (int) (conn_caa->body + len_body - arg);
 
+    // url decode for parameter type
     char decoded[128];
-    urlDecode(decoded, type, type_len);
-
+    url_decode(decoded, type, type_len);
 
     /*
-        "\"2.0.1\"\n"  // dubbo version
-        "\"com.alibaba.dubbo.performance.demo.provider.IHelloService\"\n" // service name
-        "null\n"  // service version
-        "\"hash\"\n" // method name
-        "\"Ljava/lang/String;\"\n" // method parameter types
-        "\"123ab\"\n" // method arguments
-        "{\"path\":\"com.alibaba.dubbo.performance.demo.provider.IHelloService\"}\n" // attachments
+       "\"2.0.1\"\n"  // dubbo version
+       "\"com.alibaba.dubbo.performance.demo.provider.IHelloService\"\n" // service name
+       "null\n"  // service version
+       "\"hash\"\n" // method name
+       "\"Ljava/lang/String;\"\n" // method parameter types
+       "\"123ab\"\n" // method arguments
+       "{\"path\":\"com.alibaba.dubbo.performance.demo.provider.IHelloService\"}\n" // attachments
      */
 
     int data_len = sprintf(buf,
@@ -218,6 +222,7 @@ int on_http_complete(http_parser *parser) {
     ++cur_request_id;
 
 #if 0
+    // Skip dubbo and return imediatly
     if (aeCreateFileEvent(conn_caa->event_loop, conn_caa->fd, AE_WRITABLE, write_to_consumer_agent, conn_caa) == AE_ERR) {
         log_msg(WARN, "Failed to create writable event for write_to_consumer_agent");
         close(conn_caa->fd);
@@ -226,11 +231,11 @@ int on_http_complete(http_parser *parser) {
 
     connection_ap_t *conn_ap = conn_caa->conn_ap;
     if (conn_ap == NULL) {
-        // Fetch a connection to local provider
+        // Binding connection to local provider
         conn_ap = PoolGet(connection_ap_pool);
         if (conn_ap == NULL) {
-            log_msg(FATAL, "No connection to provider available, abort");
-            exit(-1);
+            log_msg(FATAL, "No connection to local provider available");
+            abort_connection_caa(conn_caa->event_loop, conn_caa);
         }
         conn_caa->conn_ap = conn_ap;
         log_msg(DEBUG, "Binding connection %d to %d", conn_caa->fd, conn_ap->fd);
@@ -239,13 +244,13 @@ int on_http_complete(http_parser *parser) {
     // Write to local dubbo provider
     if (aeCreateFileEvent(conn_caa->event_loop, conn_ap->fd, AE_WRITABLE, write_to_local_provider, conn_caa) == AE_ERR) {
         log_msg(ERR, "Failed to create writable event for write_to_local_provider");
-        exit(-1);
+        abort_connection_caa(conn_caa->event_loop, conn_caa);
     }
 
     // Read from local dubbo provider
     if (aeCreateFileEvent(conn_caa->event_loop, conn_ap->fd, AE_READABLE, read_from_local_provider, conn_caa) == AE_ERR) {
         log_msg(ERR, "Failed to create readable event for read_from_local_provider");
-        exit(-1);
+        abort_connection_caa(conn_caa->event_loop, conn_caa);
     }
 #endif
 
@@ -259,7 +264,6 @@ int on_http_complete(http_parser *parser) {
 void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_caa_t *conn_caa = privdata;
 
-//    dump_conn(conn_caa);
     ssize_t nwrite = write(fd, conn_caa->buf_req + conn_caa->nwrite_req,
                            (size_t) (conn_caa->len_req - conn_caa->nwrite_req));
 
@@ -267,73 +271,64 @@ void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, in
         log_msg(DEBUG, "Write %d bytes to local provider for socket %d", nwrite, fd);
         conn_caa->nwrite_req += nwrite;
         if (conn_caa->nwrite_req == conn_caa->len_req) {
+            // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
         }
-    }
-
-    if (nwrite == -1) {
+    } else {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on write: %s", strerror(errno));
             return;
         }
-        log_msg(WARN, "Failed to write to local provider with socket %d: %s", fd, strerror(errno));
-
-        for (int i = 0; i < 10; i++) {
-            log_msg(DEBUG, "%d ", write(fd, conn_caa->buf_req + conn_caa->nwrite_req,
-                  (size_t) (conn_caa->len_req - conn_caa->nwrite_req)));
-        }
-
-//        dump_conn(conn_caa);
-        exit(-1);
+        log_msg(ERR, "Failed to write to local provider with socket %d: %s", fd, strerror(errno));
+        abort_connection_caa(event_loop, conn_caa);
     }
 }
 
 void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_caa_t *conn_caa = privdata;
 
-    ssize_t nread = read(fd, conn_caa->buf_resp + conn_caa->nread_resp, sizeof(conn_caa->buf_resp) - conn_caa->nread_resp);
+    ssize_t nread = read(fd, conn_caa->buf_resp + conn_caa->nread_resp,
+                         sizeof(conn_caa->buf_resp) - conn_caa->nread_resp);
+
     if (nread > 0) {
         log_msg(DEBUG, "Read %d bytes from local provider for socket %d", nread, fd);
-
         conn_caa->nread_resp += nread;
 
         if (conn_caa->nread_resp > 16) {
+            // Full header available
             uint32_t data_len = ntohl(*((uint32_t *) &conn_caa->buf_resp[12]));
             log_msg(DEBUG, "Got data_len %d", data_len);
 
+            // TODO give up?
             if (conn_caa->nread_resp < 16 + data_len) {
-                log_msg(DEBUG, "Incomplete response");
+                log_msg(WARN, "Incomplete response");
                 return;
             }
 
-            // Write to consumer agent
+            // Write back to consumer agent
             if (aeCreateFileEvent(event_loop, conn_caa->fd, AE_WRITABLE, write_to_consumer_agent, conn_caa) == AE_ERR) {
                 log_msg(WARN, "Failed to create writable event for write_to_consumer_agent");
-                close(conn_caa->fd);
-                close(fd);
+                abort_connection_caa(event_loop, conn_caa);
             }
-            return;
         }
 
-    }
-
-    if (nread == 0) {
-        log_msg(ERR, "Local provider closed connection");
-    }
-    if (nread < 0) {
+    } else if (nread < 0) {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
         log_msg(ERR, "Failed to read from local provider: %s", strerror(errno));
+        abort_connection_caa(event_loop, conn_caa);
+    } else {
+        log_msg(ERR, "Local provider closed connection");
+        abort_connection_caa(event_loop, conn_caa);
     }
-    exit(-1);
 }
 
 void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_caa_t *conn_caa = privdata;
 
-//    char *data = "Redis";
+//    char *data = "hah";
     char *data = conn_caa->buf_resp + 18;
     conn_caa->buf_resp[conn_caa->nread_resp - 1] = '\0'; // ignore last newline
 
@@ -349,6 +344,7 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
         log_msg(DEBUG, "Write %d bytes to consumer agent for socket %d", nwrite, fd);
 
         if (nwrite == strlen(buf)) {
+            // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
             http_parser_init(&conn_caa->parser, HTTP_REQUEST);
 
@@ -358,19 +354,18 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
             conn_caa->len_req = 0;
             conn_caa->nwrite_req = 0;
             conn_caa->nread_resp = 0;
+
         } else {
             // TODO
             log_msg(WARN, "Partial write for %d", fd);
         }
-    }
-
-    if (nwrite == -1) {
+    } else {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
         log_msg(ERR, "Failed to write to consumer agent: %s", strerror(errno));
-        exit(-1);
+        abort_connection_caa(event_loop, conn_caa);
     }
 }
 
@@ -398,24 +393,24 @@ void deregister_etcd_service() {
 
 int init_connection_ap(void *elem, void *data) {
     connection_ap_t *conn_ap = elem;
+
     char *addr = "127.0.0.1";
     int port = (int) data;
 
+    int fd;
     do {
-        int fd = anetTcpConnect(neterr, addr, port);
+        fd = anetTcpConnect(neterr, addr, port);
         if (fd < 0) {
-            log_msg(WARN, "Failed to connect to local provider %s:%d - %s", addr, port, neterr);
-            close(fd);
-            conn_ap->fd = -1;
+            log_msg(WARN, "Failed to connect to local provider %s:%d - %s, Sleep 1 seconds to retry later",
+                    addr, port, neterr);
             sleep(1);
         } else {
             anetNonBlock(NULL, fd);
             anetEnableTcpNoDelay(NULL, fd);
-            log_msg(DEBUG, "Build connection to local provider %s:%d", addr, port);
             conn_ap->fd = fd;
+            log_msg(DEBUG, "Build connection to local provider %s:%d with socket %d", addr, port, fd);
         }
-
-    } while (conn_ap->fd < 0);
+    } while (fd < 0);
 
     return 1;
 }
@@ -428,8 +423,7 @@ void cleanup_connection_ap(void *elem) {
     }
 }
 
-/* Function: urlDecode */
-char *urlDecode(char *dStr, const char *str, int length) {
+char *url_decode(char *dStr, const char *str, int length) {
     int d = 0; /* whether or not the string is decoded */
 
     char eStr[] = "00"; /* for a hex code */
@@ -467,4 +461,20 @@ char *urlDecode(char *dStr, const char *str, int length) {
     }
 
     return dStr;
+}
+
+void abort_connection_caa(aeEventLoop *event_loop, connection_caa_t *conn_caa) {
+    close(conn_caa->fd);
+    aeDeleteFileEvent(event_loop, conn_caa->fd, AE_WRITABLE | AE_READABLE);
+    log_msg(ERR, "Abort connection to consumer agent with socket: %d", conn_caa->fd);
+
+    connection_ap_t *conn_ap = conn_caa->conn_ap;
+    if (conn_ap != NULL) {
+        close(conn_ap->fd);
+        aeDeleteFileEvent(event_loop, conn_ap->fd, AE_WRITABLE | AE_READABLE);
+        log_msg(ERR, "Abort connection to local provider with socket: %d", conn_ap->fd);
+    }
+
+    PoolReturn(connection_caa_pool, conn_caa);
+    log_msg(DEBUG, "Released connection object to pool, active: %d", connection_caa_pool->outstanding);
 }
