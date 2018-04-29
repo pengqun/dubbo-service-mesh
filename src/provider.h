@@ -15,6 +15,11 @@ typedef struct connection_caa {
     char buf_in[2048];
     size_t nread_in;
 
+    char buf_out[128];
+    size_t pre_len;
+    size_t buf_out_len;
+    size_t nwrite_out;
+
     char *body;
     size_t len_body;
 

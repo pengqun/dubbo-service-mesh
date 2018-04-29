@@ -11,9 +11,6 @@
 static char neterr[256];
 static char etcd_key[128];
 
-static char resp_buffer[128];
-static size_t pre_len = 0;
-
 static Pool *connection_caa_pool = NULL;
 static Pool *connection_ap_pool = NULL;
 
@@ -59,9 +56,6 @@ void provider_init(int server_port, int dubbo_port) {
     parser_settings.on_body = on_http_body;
     parser_settings.on_message_complete = on_http_complete;
 
-    sprintf(resp_buffer, "HTTP/1.1 200 OK\r\nContent-Length:");
-    pre_len = strlen(resp_buffer);
-
     log_msg(INFO, "Provider init done");
 }
 
@@ -87,6 +81,9 @@ void provider_http_handler(aeEventLoop *event_loop, int fd) {
 
     http_parser_init(&conn_caa->parser, HTTP_REQUEST);
     conn_caa->parser.data = conn_caa;
+
+    sprintf(conn_caa->buf_out, "HTTP/1.1 200 OK\r\nContent-Length:");
+    conn_caa->pre_len = strlen(conn_caa->buf_out);
 
     // Read from consumer agent
     if (aeCreateFileEvent(event_loop, fd, AE_READABLE, read_from_consumer_agent, conn_caa) == AE_ERR) {
@@ -335,20 +332,23 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
     connection_caa_t *conn_caa = privdata;
 
 //    char *data = "hah";
-    char *data = conn_caa->buf_resp + 18;
-    conn_caa->buf_resp[conn_caa->nread_resp - 1] = '\0'; // ignore last newline
-    size_t data_len = conn_caa->nread_resp - 19;
+    if (LIKELY(conn_caa->buf_out_len == 0)) {
+        char *data = conn_caa->buf_resp + 18;
+        conn_caa->buf_resp[conn_caa->nread_resp - 1] = '\0'; // ignore last newline
+        size_t data_len = conn_caa->nread_resp - 19;
 
-    int add_len = sprintf(resp_buffer + pre_len, "%ld\r\n\r\n%s", data_len, data);
-    size_t buf_len = pre_len + add_len;
-    log_msg(DEBUG, "Response: %.*s", buf_len, resp_buffer);
+        int add_len = sprintf(conn_caa->buf_out + conn_caa->pre_len, "%ld\r\n\r\n%s", data_len, data);
+        conn_caa->buf_out_len = conn_caa->pre_len + add_len;
+        log_msg(DEBUG, "Response: %.*s", conn_caa->buf_out_len, conn_caa->buf_out);
+    }
 
-    ssize_t nwrite = write(fd, resp_buffer, buf_len);
+    ssize_t nwrite = write(fd, conn_caa->buf_out + conn_caa->nwrite_out, conn_caa->buf_out_len - conn_caa->nwrite_out);
 
     if (nwrite >= 0) {
         log_msg(DEBUG, "Write %d bytes to consumer agent for socket %d", nwrite, fd);
+        conn_caa->nwrite_out += nwrite;
 
-        if (nwrite == buf_len) {
+        if (nwrite == conn_caa->buf_out_len) {
             // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
             http_parser_init(&conn_caa->parser, HTTP_REQUEST);
@@ -359,6 +359,8 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
             conn_caa->len_req = 0;
             conn_caa->nwrite_req = 0;
             conn_caa->nread_resp = 0;
+            conn_caa->nwrite_out = 0;
+            conn_caa->buf_out_len = 0;
 
         } else {
             // TODO
@@ -427,47 +429,6 @@ void cleanup_connection_ap(void *elem) {
         close(conn_ap->fd);
     }
 }
-
-
-
-//char *url_decode(char *target, const char *str, int length) {
-//    int d = 0; /* whether or not the string is decoded */
-//    char eStr[] = "00"; /* for a hex code */
-//
-//    strncpy(target, str, length);
-//
-//    while (!d) {
-//        d = 1;
-//        int i; /* the counter for the string */
-//
-//        for (i=0; i< strlen(target) ;++i) {
-//
-//            if(target[i] == '%') {
-//                if(target[i+1] == 0)
-//                    return target;
-//
-//                if(isxdigit(target[i+1]) && isxdigit(target[i+2])) {
-//
-//                    d = 0;
-//
-//                    /* combine the next to numbers into one */
-//                    eStr[0] = target[i+1];
-//                    eStr[1] = target[i+2];
-//
-//                    /* convert it to decimal */
-//                    long int x = strtol(eStr, NULL, 16);
-//
-//                    /* remove the hex */
-//                    memmove(&target[i+1], &target[i+3], strlen(&target[i+3])+1);
-//
-//                    target[i] = x;
-//                }
-//            }
-//        }
-//    }
-//
-//    return target;
-//}
 
 void abort_connection_caa(aeEventLoop *event_loop, connection_caa_t *conn_caa) {
     close(conn_caa->fd);

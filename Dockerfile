@@ -4,8 +4,8 @@ FROM registry.cn-hangzhou.aliyuncs.com/tianchi4-docker/tianchi4-services AS buil
 COPY sources.list /etc/apt
 
 RUN apt-get update
-RUN apt-get install -y build-essential libcurl4-openssl-dev libjansson-dev
-#RUN apt-get install -y build-essential libcurl4-openssl-dev libjansson-dev libgoogle-perftools-dev
+#RUN apt-get install -y build-essential libcurl4-openssl-dev libjansson-dev
+RUN apt-get install -y build-essential libcurl4-openssl-dev libjansson-dev libgoogle-perftools-dev
 
 COPY . /root/workspace/agent/
 WORKDIR /root/workspace/agent
@@ -17,8 +17,8 @@ FROM registry.cn-hangzhou.aliyuncs.com/tianchi4-docker/debian-jdk8
 
 RUN apt-get update
 #RUN apt-get install -y net-tools nc
-RUN apt-get install -y libcurl4-openssl-dev libjansson-dev
-#RUN apt-get install -y libcurl4-openssl-dev libjansson-dev libgoogle-perftools-dev
+#RUN apt-get install -y libcurl4-openssl-dev libjansson-dev
+RUN apt-get install -y libcurl4-openssl-dev libjansson-dev libgoogle-perftools-dev
 
 #ENV TZ=Asia/Shanghai
 #RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone

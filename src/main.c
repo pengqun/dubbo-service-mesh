@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
 
 //    setpriority(PRIO_PROCESS, 0, -20);
 
-    set_cpu_affinity();
+//    set_cpu_affinity();
 
     etcd_init(etcd_host, ETCD_PORT, 0);
     log_msg(INFO, "Init etcd to host %s", etcd_host);
@@ -156,6 +156,7 @@ void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 }
 
+#if 0
 void set_cpu_affinity() {
 
     int num_cpu = (int) sysconf(_SC_NPROCESSORS_CONF);
@@ -169,6 +170,7 @@ void set_cpu_affinity() {
         log_msg(WARN, "Set CPU affinity failed: %s\n", strerror(errno));
     }
 }
+#endif
 
 #ifdef MICRO_HTTP
 int access_handler(void *cls, struct MHD_Connection *connection,
