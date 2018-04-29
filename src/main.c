@@ -7,6 +7,9 @@
 
 #define ETCD_PORT 2379
 
+// Adjustable params
+#define EV_MAX_SET_SIZE 2048
+#define TCP_LISTEN_BACKLOG 40000
 #define MAX_ACCEPTS_PER_CALL 1
 #define NET_IP_STR_LEN 46
 
@@ -95,23 +98,23 @@ void signal_handler(int sig) {
 }
 
 void start_http_server(int server_port) {
-    the_event_loop = aeCreateEventLoop(2048);
+    the_event_loop = aeCreateEventLoop(EV_MAX_SET_SIZE);
 
-    int listen_fd = anetTcpServer(neterr, server_port, NULL, 40000);
+    int listen_fd = anetTcpServer(neterr, server_port, NULL, TCP_LISTEN_BACKLOG);
     if (listen_fd == ANET_ERR) {
-        log_msg(FATAL, "Failed to create listening socket: %s", neterr);
+        log_msg(ERR, "Failed to create listening socket: %s", neterr);
         exit(EXIT_FAILURE);
     }
     anetNonBlock(NULL, listen_fd);
 
     int ret = aeCreateFileEvent(the_event_loop, listen_fd, AE_READABLE, accept_tcp_handler, NULL);
     if (ret == ANET_ERR) {
-        log_msg(FATAL, "Failed to create file event for accept_tcp_handler");
+        log_msg(ERR, "Failed to create file event for accept_tcp_handler: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
 #ifdef PROFILER
-    ProfilerStart("iprofile");
+    ProfilerStart("/root/logs/iprofile");
     log_msg(INFO, "Start profiler");
 #endif
     aeMain(the_event_loop);
@@ -129,8 +132,9 @@ void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
     while (max--) {
         client_fd = anetTcpAccept(neterr, fd, client_ip, sizeof(client_ip), &client_port);
         if (client_fd == ANET_ERR) {
-            if (errno != EWOULDBLOCK)
-                log_msg(WARN, "Failed to accept client connection: %s", neterr);
+            if (errno != EWOULDBLOCK) {
+                log_msg(ERR, "Failed to accept client connection: %s", neterr);
+            }
             return;
         }
         log_msg(DEBUG, "Accept client connection: %s:%d with socket %d", client_ip, client_port, client_fd);

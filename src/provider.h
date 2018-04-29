@@ -10,7 +10,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#define DEBUG_THIS_FILE
+//#define DEBUG_THIS_FILE
 #include "log.h"
 
 #include "pool.h"

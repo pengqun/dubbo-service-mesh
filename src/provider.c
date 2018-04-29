@@ -14,8 +14,8 @@
 //#define INTERFACE "eth0"
 #define INTERFACE "docker0"
 
-#define NUM_CONN_FOR_CONSUMER 256
-#define NUM_CONN_TO_PROVIDER 256
+#define NUM_CONN_FOR_CONSUMER 1024
+#define NUM_CONN_TO_PROVIDER 512
 
 static char neterr[256];
 
@@ -401,17 +401,15 @@ int init_connection_ap(void *elem, void *data) {
     char *addr = "127.0.0.1";
     int port = (int) data;
 
-//    int fd = anetTcpNonBlockConnect(neterr, addr, port);
     do {
         int fd = anetTcpConnect(neterr, addr, port);
-        anetNonBlock(NULL, fd);
-
         if (fd < 0) {
             log_msg(WARN, "Failed to connect to local provider %s:%d - %s", addr, port, neterr);
             close(fd);
             conn_ap->fd = -1;
             sleep(1);
         } else {
+            anetNonBlock(NULL, fd);
             anetEnableTcpNoDelay(NULL, fd);
             log_msg(DEBUG, "Build connection to local provider %s:%d", addr, port);
             conn_ap->fd = fd;

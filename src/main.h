@@ -19,7 +19,7 @@
 #include <gperftools/profiler.h>
 #endif
 
-#define DEBUG_THIS_FILE
+//#define DEBUG_THIS_FILE
 #include "log.h"
 
 #include "etcd.h"

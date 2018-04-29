@@ -3,14 +3,16 @@
 #include "http_parser.h"
 #include "anet.h"
 
+// Adjustable params
 #define NUM_CONN_FOR_CONSUMER 512
-#define NUM_CONN_PER_PROVIDER 256
+#define NUM_CONN_PER_PROVIDER 512
+#define LOAD_BALANCE_THRESHOLD 10
 
 static char neterr[256];
 
 static endpoint_t endpoints[3];
 static int num_endpoints = 0;
-static int round_robin_id = 0;
+//static int round_robin_id = 0;
 
 static Pool *connection_ca_pool = NULL;
 
@@ -26,11 +28,15 @@ void write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int 
 void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
 void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
 
+void abort_connection_ca(aeEventLoop *event_loop, connection_ca_t *conn_ca) ;
+
+void abort_connection_apa(aeEventLoop *event_loop, connection_apa_t *conn_apa) ;
+
 void consumer_init() {
     log_msg(INFO, "Consumer init begin");
     discover_etcd_services();
 
-    log_msg(DEBUG, "Init connection pool for consumer");
+    log_msg(INFO, "Init connection pool for consumer");
     connection_ca_pool = PoolInit(NUM_CONN_FOR_CONSUMER, NUM_CONN_FOR_CONSUMER,
                                   sizeof(connection_ca_t), NULL, NULL, NULL, NULL, NULL);
     PoolPrintSaturation(connection_ca_pool);
@@ -46,55 +52,50 @@ void consumer_http_handler(aeEventLoop *event_loop, int fd) {
     // Fetch a connection object from pool
     connection_ca_t *conn_ca = PoolGet(connection_ca_pool);
     if (conn_ca == NULL) {
-        log_msg(FATAL, "No connection object available, abort");
-        exit(-1);
+        log_msg(ERR, "No connection object available, abort connection");
+        close(fd);
+        return;
     }
-    log_msg(DEBUG, "Fetched connection object from pool, active: %d", connection_ca_pool->outstanding);
     memset(conn_ca, 0, sizeof(connection_ca_t));
     conn_ca->fd = fd;
+    log_msg(DEBUG, "Fetched connection object from pool, active: %d", connection_ca_pool->outstanding);
 
     // Read from consumer
     if (aeCreateFileEvent(event_loop, fd, AE_READABLE, read_from_consumer, conn_ca) == AE_ERR) {
-        log_msg(FATAL, "Failed to create readable event for read_from_consumer");
-        exit(-1);
+        log_msg(ERR, "Failed to create readable event for read_from_consumer, socket %d", fd);
+        abort_connection_ca(event_loop, conn_ca);
     }
 }
 
 void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_ca_t *conn_ca = privdata;
 
-    ssize_t nread = read(fd, conn_ca->buf_in + conn_ca->nread_in, sizeof(conn_ca->buf_in) - conn_ca->nread_in);
+    ssize_t nread = read(fd, conn_ca->buf_in + conn_ca->nread_in,
+                         sizeof(conn_ca->buf_in) - conn_ca->nread_in);
 
     if (nread > 0) {
         log_msg(DEBUG, "Read %d bytes from consumer for socket %d", nread, fd);
         conn_ca->nread_in += nread;
 
-        // Reset buf_out pointers
-        conn_ca->nread_out = 0;
-        conn_ca->nwrite_out = 0;
-
+        // Get connection to remote agent
         connection_apa_t *conn_apa = conn_ca->conn_apa;
-
         if (conn_apa == NULL) {
-            // Load balance: pick up a remote endpoint
-//            endpoint_t *endpoint = &endpoints[round_robin_id++ % num_endpoints];
+            // Load balance: least-loaded
             endpoint_t *endpoint = &endpoints[0];
             int min_outstanding = endpoints[0].conn_pool->outstanding;
-            for (int i = 1; i < num_endpoints; i++) {
-                if (min_outstanding > endpoints[i].conn_pool->outstanding) {
-                    min_outstanding = endpoints[i].conn_pool->outstanding;
-                    endpoint = &endpoints[i];
+            if (min_outstanding > LOAD_BALANCE_THRESHOLD) {
+                for (int i = 1; i < num_endpoints; i++) {
+                    if (min_outstanding > endpoints[i].conn_pool->outstanding) {
+                        min_outstanding = endpoints[i].conn_pool->outstanding;
+                        endpoint = &endpoints[i];
+                    }
                 }
             }
-
             conn_apa = PoolGet(endpoint->conn_pool);
             if (conn_apa == NULL) {
-                log_msg(ERR, "No connection to remote agent available, abort");
-//                aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
-//                PoolReturn(connection_ca_pool, conn_ca);
-//                close(fd);
-//                return;
-                exit(-1);
+                log_msg(ERR, "No connection to remote agent available for socket %d", fd);
+                abort_connection_ca(event_loop, conn_ca);
+                return;
             }
             conn_ca->conn_apa = conn_apa;
             log_msg(DEBUG, "Pick up connection to %s:%d with socket %d and outstanding %d",
@@ -103,32 +104,30 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
 
         // Write to remote agent
         if (aeCreateFileEvent(event_loop, conn_apa->fd, AE_WRITABLE, write_to_remote_agent, conn_ca) == AE_ERR) {
-            log_msg(ERR, "Failed to create writable event for write_to_remote_agent");
-            exit(-1);
+            log_msg(ERR, "Failed to create writable event for write_to_remote_agent: %s", strerror(errno));
+            abort_connection_ca(event_loop, conn_ca);
         }
         // Read from remote agent
         if (aeCreateFileEvent(event_loop, conn_apa->fd, AE_READABLE, read_from_remote_agent, conn_ca) == AE_ERR) {
-            log_msg(ERR, "Failed to create readable event for read_from_remote_agent");
-            exit(-1);
+            log_msg(ERR, "Failed to create readable event for read_from_remote_agent: %s", strerror(errno));
+            abort_connection_ca(event_loop, conn_ca);
         }
-        return;
-    }
 
-    if (nread < 0) {
+    } else if (nread < 0) {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read_from_consumer: %s", strerror(errno));
             return;
         }
-        log_msg(ERR, "Failed to read from consumer: %s", strerror(errno));
-        exit(-1);
+        log_msg(ERR, "Failed to read from consumer, abort connection: %s", strerror(errno));
+        abort_connection_ca(event_loop, conn_ca);
+
+    } else {
+        log_msg(INFO, "Consumer closed connection for socket %d", conn_ca->fd);
+        close(fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
+        PoolReturn(connection_ca_pool, conn_ca);
+        log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_ca_pool->outstanding);
     }
-    if (nread == 0) {
-        log_msg(INFO, "Consumer closed connection");
-    }
-    aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
-    PoolReturn(connection_ca_pool, conn_ca);
-    log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_ca_pool->outstanding);
-    close(fd);
 }
 
 void write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
@@ -144,55 +143,44 @@ void write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int 
             // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
         }
-    }
-
-    if (nwrite == -1) {
+    } else {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on write: %s", strerror(errno));
             return;
         }
         log_msg(ERR, "Failed to write to remote agent: %s", strerror(errno));
-        exit(-1);
+        abort_connection_ca(event_loop, conn_ca);
     }
 }
 
 void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_ca_t *conn_ca = privdata;
 
-    ssize_t nread = read(fd, conn_ca->buf_out + conn_ca->nread_out, sizeof(conn_ca->buf_out) - conn_ca->nread_out);
+    ssize_t nread = read(fd, conn_ca->buf_out + conn_ca->nread_out,
+                         sizeof(conn_ca->buf_out) - conn_ca->nread_out);
 
     if (nread > 0) {
         log_msg(DEBUG, "Read %d bytes from remote agent for socket %d", nread, fd);
         conn_ca->nread_out += nread;
 
-        // Reset buf_in pointers
-        conn_ca->nread_in = 0;
-        conn_ca->nwrite_in = 0;
-
         // Write back to consumer
         if (aeCreateFileEvent(event_loop, conn_ca->fd, AE_WRITABLE, write_to_consumer, conn_ca) == AE_ERR) {
             log_msg(ERR, "Failed to create writable event for write_to_consumer: %s", strerror(errno));
-            exit(-1);
+            abort_connection_ca(event_loop, conn_ca);
         }
-        return;
-    }
 
-    if (nread < 0) {
+    } else if (nread < 0) {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read_from_remote_agent: %s", strerror(errno));
             return;
         }
         log_msg(ERR, "Failed to read from remote agent: %s", strerror(errno));
-        exit(-1);
+        abort_connection_ca(event_loop, conn_ca);
+
+    } else {
+        log_msg(ERR, "Remote agent closed connection for socket %d", fd);
+        abort_connection_ca(event_loop, conn_ca);
     }
-    if (nread == 0) {
-        log_msg(ERR, "Remote agent closed connection");
-        exit(-1);
-    }
-    aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
-    close(fd);
-    aeDeleteFileEvent(event_loop, conn_ca->fd, AE_WRITABLE | AE_READABLE);
-    close(conn_ca->fd);
 }
 
 void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
@@ -204,8 +192,16 @@ void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask
     if (nwrite >= 0) {
         log_msg(DEBUG, "Write %d bytes to consumer for socket %d", nwrite, fd);
         conn_ca->nwrite_out += nwrite;
+
         if (conn_ca->nwrite_out == conn_ca->nread_out) {
+            // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
+
+            // Reset buf pointers
+            conn_ca->nread_in = 0;
+            conn_ca->nwrite_in = 0;
+            conn_ca->nread_out = 0;
+            conn_ca->nwrite_out = 0;
 
             // Release current connection to remote agent
             connection_apa_t *conn_apa = conn_ca->conn_apa;
@@ -213,19 +209,19 @@ void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask
                 aeDeleteFileEvent(event_loop, conn_apa->fd, AE_WRITABLE | AE_READABLE);
                 PoolReturn(conn_apa->endpoint->conn_pool, conn_apa);
                 conn_ca->conn_apa = NULL;
-                log_msg(DEBUG, "Release connection to %s:%d for socket %d",
+                log_msg(DEBUG, "Release connection to remote agent %s:%d for socket %d",
                         conn_apa->endpoint->ip, conn_apa->endpoint->port, conn_apa->fd);
+            } else {
+                log_msg(ERR, "No connection to remote agent to release for socket %d", fd);
             }
         }
-    }
-
-    if (nwrite == -1) {
+    } else {
         if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on write: %s", strerror(errno));
             return;
         }
         log_msg(ERR, "Failed to write to consumer: %s", strerror(errno));
-        exit(-1);
+        abort_connection_ca(event_loop, conn_ca);
     }
 }
 
@@ -234,7 +230,8 @@ void discover_etcd_services() {
     int ret = etcd_get_directory("/dubbomesh/com.alibaba.dubbo.performance.demo.provider.IHelloService/",
                                  on_etcd_service_endpoint, NULL, &modifiedIndex);
     if (ret != 0) {
-        log_msg(FATAL, "Failed to do etcd_get_directory: %d", ret);
+        log_msg(ERR, "Failed to do etcd_get_directory: %d", ret);
+        exit(-1);
     }
     log_msg(INFO, "Discovered total %d service endpoints", num_endpoints);
 }
@@ -247,7 +244,6 @@ void on_etcd_service_endpoint(const char *key, const char *value, void *arg) {
 
     endpoints[num_endpoints].ip = ip;
     endpoints[num_endpoints].port = atoi(port);
-//    endpoints[num_endpoints].pending = 0;
 
     // Set up connection pool to this endpoint
     endpoints[num_endpoints].conn_pool = PoolInit(
@@ -264,18 +260,16 @@ int init_connection_apa(void *elem, void *data) {
     memset(conn_apa, 0, sizeof(connection_apa_t));
     conn_apa->endpoint = endpoint;
 
-//    int fd = anetTcpNonBlockConnect(neterr, endpoint->ip, endpoint->port);
     int fd;
     do {
         fd = anetTcpConnect(neterr, endpoint->ip, endpoint->port);
-        anetNonBlock(NULL, fd);
 
         if (fd < 0) {
-            log_msg(WARN, "Failed to connect to remote agent %s:%d - %s", endpoint->ip, endpoint->port, neterr);
-            close(fd);
-            conn_apa->fd = -1;
+            log_msg(WARN, "Failed to connect to remote agent %s:%d - %s, Sleep 1 seconds to retry late",
+                    endpoint->ip, endpoint->port, neterr);
             sleep(1);
         } else {
+            anetNonBlock(NULL, fd);
             anetEnableTcpNoDelay(NULL, fd);
             conn_apa->fd = fd;
             log_msg(DEBUG, "Build connection to remote agent %s:%d", endpoint->ip, endpoint->port);
@@ -291,4 +285,21 @@ void cleanup_connection_apa(void *elem) {
     if (conn_apa->fd > 0) {
         close(conn_apa->fd);
     }
+}
+
+void abort_connection_ca(aeEventLoop *event_loop, connection_ca_t *conn_ca) {
+    close(conn_ca->fd);
+    aeDeleteFileEvent(event_loop, conn_ca->fd, AE_WRITABLE | AE_READABLE);
+    log_msg(ERR, "Abort connection to consumer with socket: %d", conn_ca->fd);
+
+    connection_apa_t *conn_apa = conn_ca->conn_apa;
+    if (conn_apa != NULL) {
+        close(conn_apa->fd);
+        aeDeleteFileEvent(event_loop, conn_apa->fd, AE_WRITABLE | AE_READABLE);
+//    PoolReturn(conn_apa->endpoint->pool, conn_apa);
+        log_msg(ERR, "Abort connection to provider agent with socket: %d", conn_apa->fd);
+    }
+
+    PoolReturn(connection_ca_pool, conn_ca);
+    log_msg(DEBUG, "Released connection object to pool, active: %d", connection_ca_pool->outstanding);
 }

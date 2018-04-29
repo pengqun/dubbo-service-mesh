@@ -10,7 +10,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#define DEBUG_THIS_FILE
+//#define DEBUG_THIS_FILE
 #include "log.h"
 
 #include "pool.h"
@@ -41,7 +41,6 @@ typedef struct endpoint {
     char *ip;
     int port;
     Pool *conn_pool; // pool of connection_apa
-//    int pending;
 } endpoint_t;
 
 
