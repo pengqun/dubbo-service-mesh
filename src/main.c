@@ -25,6 +25,8 @@ void signal_handler(int sig) ;
 void start_http_server(int server_port) ;
 void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) ;
 
+void set_cpu_affinity() ;
+
 #ifdef MICRO_HTTP
 void start_micro_http_server(int server_port) ;
 #endif
@@ -66,6 +68,10 @@ int main(int argc, char **argv) {
     log_msg(INFO, "Init log with dir %s", log_dir);
 
     signal(SIGINT, signal_handler);
+
+//    setpriority(PRIO_PROCESS, 0, -20);
+
+    set_cpu_affinity();
 
     etcd_init(etcd_host, ETCD_PORT, 0);
     log_msg(INFO, "Init etcd to host %s", etcd_host);
@@ -147,6 +153,20 @@ void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
         } else {
             provider_http_handler(el, client_fd);
         }
+    }
+}
+
+void set_cpu_affinity() {
+
+    int num_cpu = (int) sysconf(_SC_NPROCESSORS_CONF);
+    log_msg(INFO, "Number of CPUs: ", num_cpu);
+
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(num_cpu - 1, &mask);
+
+    if (sched_setaffinity(0, sizeof(mask), &mask) == -1) {
+        log_msg(WARN, "Set CPU affinity failed: %s\n", strerror(errno));
     }
 }
 

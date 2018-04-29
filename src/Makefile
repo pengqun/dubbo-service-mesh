@@ -33,9 +33,9 @@ endif
 
 ifdef RELEASE
 #CFLAGS += -Ofast
-CFLAGS += -O0
+CFLAGS += -O2
 else
-CFLAGS += -O0 -g
+#CFLAGS += -O0 -g
 #LDFLAGS += -rdynamic
 endif
 
