@@ -43,6 +43,7 @@
 #include "ae.h"
 #include "zmalloc.h"
 #include "config.h"
+#include "log.h"
 
 /* Include the best multiplexing layer supported by this system.
  * The following should be ordered by performances, descending. */
@@ -138,12 +139,15 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
 {
     if (fd >= eventLoop->setsize) {
         errno = ERANGE;
+        log_msg(ERR, "aeCreateFileEvent ERANGE");
         return AE_ERR;
     }
     aeFileEvent *fe = &eventLoop->events[fd];
 
-    if (aeApiAddEvent(eventLoop, fd, mask) == -1)
+    if (aeApiAddEvent(eventLoop, fd, mask) == -1) {
+        log_msg(ERR, "aeCreateFileEvent aeApiAddEvent for %d", fd);
         return AE_ERR;
+    }
     fe->mask |= mask;
     if (mask & AE_READABLE) fe->rfileProc = proc;
     if (mask & AE_WRITABLE) fe->wfileProc = proc;

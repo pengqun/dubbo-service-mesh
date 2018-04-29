@@ -1,6 +1,6 @@
 
 #PROFILE := true
-RELEASE := true
+#RELEASE := true
 NO_LOG := true
 #MICRO_HTTP := true
 
@@ -32,10 +32,10 @@ CFLAGS += -DMICRO_HTTP
 endif
 
 ifdef RELEASE
-CFLAGS += -O3
+CFLAGS += -O2
 else
 CFLAGS += -O0 -g
-LDFLAGS += -rdynamic
+#LDFLAGS += -rdynamic
 endif
 
 all: $(BIN)

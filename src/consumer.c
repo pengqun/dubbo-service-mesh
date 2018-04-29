@@ -77,7 +77,16 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
 
         if (conn_apa == NULL) {
             // Load balance: pick up a remote endpoint
-            endpoint_t *endpoint = &endpoints[round_robin_id++ % num_endpoints];
+//            endpoint_t *endpoint = &endpoints[round_robin_id++ % num_endpoints];
+            endpoint_t *endpoint = &endpoints[0];
+            int min_outstanding = endpoints[0].conn_pool->outstanding;
+            for (int i = 1; i < num_endpoints; i++) {
+                if (min_outstanding > endpoints[i].conn_pool->outstanding) {
+                    min_outstanding = endpoints[i].conn_pool->outstanding;
+                    endpoint = &endpoints[i];
+                }
+            }
+
             conn_apa = PoolGet(endpoint->conn_pool);
             if (conn_apa == NULL) {
                 log_msg(ERR, "No connection to remote agent available, abort");
@@ -88,8 +97,8 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
                 exit(-1);
             }
             conn_ca->conn_apa = conn_apa;
-            log_msg(DEBUG, "Pick up connection to %s:%d with socket %d",
-                    conn_apa->endpoint->ip, conn_apa->endpoint->port, conn_apa->fd);
+            log_msg(DEBUG, "Pick up connection to %s:%d with socket %d and outstanding %d",
+                    conn_apa->endpoint->ip, conn_apa->endpoint->port, conn_apa->fd, min_outstanding);
         }
 
         // Write to remote agent
@@ -162,7 +171,7 @@ void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int
 
         // Write back to consumer
         if (aeCreateFileEvent(event_loop, conn_ca->fd, AE_WRITABLE, write_to_consumer, conn_ca) == AE_ERR) {
-            log_msg(ERR, "Failed to create writable event for write_to_consumer");
+            log_msg(ERR, "Failed to create writable event for write_to_consumer: %s", strerror(errno));
             exit(-1);
         }
         return;
@@ -201,6 +210,7 @@ void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask
             // Release current connection to remote agent
             connection_apa_t *conn_apa = conn_ca->conn_apa;
             if (conn_apa != NULL) {
+                aeDeleteFileEvent(event_loop, conn_apa->fd, AE_WRITABLE | AE_READABLE);
                 PoolReturn(conn_apa->endpoint->conn_pool, conn_apa);
                 conn_ca->conn_apa = NULL;
                 log_msg(DEBUG, "Release connection to %s:%d for socket %d",
