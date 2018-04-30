@@ -6,12 +6,12 @@
 #define AGENT_PROVIDER 2
 
 #define ETCD_PORT 2379
+#define NET_IP_STR_LEN 46
 
 // Adjustable params
 #define EV_MAX_SET_SIZE 2048
 #define TCP_LISTEN_BACKLOG 40000
 #define MAX_ACCEPTS_PER_CALL 1
-#define NET_IP_STR_LEN 46
 
 
 static int dubbo_port = 0;
@@ -131,7 +131,7 @@ void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     while (max--) {
         client_fd = anetTcpAccept(neterr, fd, client_ip, sizeof(client_ip), &client_port);
-        if (client_fd == ANET_ERR) {
+        if (UNLIKELY(client_fd == ANET_ERR)) {
             if (errno != EWOULDBLOCK) {
                 log_msg(ERR, "Failed to accept client connection: %s", neterr);
             }

@@ -74,7 +74,7 @@ void provider_cleanup() {
 void provider_http_handler(aeEventLoop *event_loop, int fd) {
     // Fetch a connection object from pool
     connection_caa_t *conn_caa = PoolGet(connection_caa_pool);
-    if (conn_caa == NULL) {
+    if (UNLIKELY(conn_caa == NULL)) {
         log_msg(ERR, "No connection object available, abort connection");
         close(fd);
         return;
@@ -89,7 +89,7 @@ void provider_http_handler(aeEventLoop *event_loop, int fd) {
     conn_caa->parser.data = conn_caa;
 
     // Read from consumer agent
-    if (aeCreateFileEvent(event_loop, fd, AE_READABLE, read_from_consumer_agent, conn_caa) == AE_ERR) {
+    if (UNLIKELY(aeCreateFileEvent(event_loop, fd, AE_READABLE, read_from_consumer_agent, conn_caa) == AE_ERR)) {
         log_msg(FATAL, "Failed to create readable event for read_from_consumer_agent");
         abort_connection_caa(event_loop, conn_caa);
     }
@@ -101,7 +101,7 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
     ssize_t nread = read(fd, conn_caa->buf_in + conn_caa->nread_in,
                          sizeof(conn_caa->buf_in) - conn_caa->nread_in);
 
-    if (nread > 0) {
+    if (LIKELY(nread > 0)) {
         log_msg(DEBUG, "Read %d bytes from consumer agent for socket %d", nread, fd);
 
         // Feed input to HTTP parser
@@ -109,13 +109,13 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
                                              conn_caa->buf_in + conn_caa->nread_in, (size_t) nread);
         conn_caa->nread_in += nread;
 
-        if (nparsed != nread) {
+        if (UNLIKELY(nparsed != nread)) {
             log_msg(ERR, "Failed to parse HTTP response from remote agent");
             abort_connection_caa(event_loop, conn_caa);
         }
 
-    } else if (nread < 0) {
-        if (errno == EAGAIN) {
+    } else if (UNLIKELY(nread < 0)) {
+        if (UNLIKELY(errno == EAGAIN)) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
@@ -191,7 +191,7 @@ int on_http_complete(http_parser *parser) {
 //    url_decode(decoded, type, type_len);
 
     // No runtime decoding, just look up pre-defined mapping (or better: prefix tree)
-    if (strncmp(type, "Ljava%2Flang%2FString%3B", (size_t) type_len) == 0) {
+    if (LIKELY(strncmp(type, "Ljava%2Flang%2FString%3B", (size_t) type_len) == 0)) {
         type = "Ljava/lang/String;";
         type_len = (int) strlen(type);
     }
@@ -236,7 +236,7 @@ int on_http_complete(http_parser *parser) {
 #else
 
     connection_ap_t *conn_ap = conn_caa->conn_ap;
-    if (conn_ap == NULL) {
+    if (UNLIKELY(conn_ap == NULL)) {
         // Binding connection to local provider
         conn_ap = PoolGet(connection_ap_pool);
         if (conn_ap == NULL) {
@@ -248,13 +248,13 @@ int on_http_complete(http_parser *parser) {
     }
 
     // Write to local dubbo provider
-    if (aeCreateFileEvent(conn_caa->event_loop, conn_ap->fd, AE_WRITABLE, write_to_local_provider, conn_caa) == AE_ERR) {
+    if (UNLIKELY(aeCreateFileEvent(conn_caa->event_loop, conn_ap->fd, AE_WRITABLE, write_to_local_provider, conn_caa) == AE_ERR)) {
         log_msg(ERR, "Failed to create writable event for write_to_local_provider");
         abort_connection_caa(conn_caa->event_loop, conn_caa);
     }
 
     // Read from local dubbo provider
-    if (aeCreateFileEvent(conn_caa->event_loop, conn_ap->fd, AE_READABLE, read_from_local_provider, conn_caa) == AE_ERR) {
+    if (UNLIKELY(aeCreateFileEvent(conn_caa->event_loop, conn_ap->fd, AE_READABLE, read_from_local_provider, conn_caa) == AE_ERR)) {
         log_msg(ERR, "Failed to create readable event for read_from_local_provider");
         abort_connection_caa(conn_caa->event_loop, conn_caa);
     }
@@ -273,7 +273,7 @@ void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, in
     ssize_t nwrite = write(fd, conn_caa->buf_req + conn_caa->nwrite_req,
                            (size_t) (conn_caa->len_req - conn_caa->nwrite_req));
 
-    if (nwrite >= 0) {
+    if (LIKELY(nwrite >= 0)) {
         log_msg(DEBUG, "Write %d bytes to local provider for socket %d", nwrite, fd);
         conn_caa->nwrite_req += nwrite;
         if (conn_caa->nwrite_req == conn_caa->len_req) {
@@ -281,7 +281,7 @@ void write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata, in
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
         }
     } else {
-        if (errno == EAGAIN) {
+        if (UNLIKELY(errno == EAGAIN)) {
             log_msg(WARN, "Got EAGAIN on write: %s", strerror(errno));
             return;
         }
@@ -296,7 +296,7 @@ void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, i
     ssize_t nread = read(fd, conn_caa->buf_resp + conn_caa->nread_resp,
                          sizeof(conn_caa->buf_resp) - conn_caa->nread_resp);
 
-    if (nread > 0) {
+    if (LIKELY(nread > 0)) {
         log_msg(DEBUG, "Read %d bytes from local provider for socket %d", nread, fd);
         conn_caa->nread_resp += nread;
 
@@ -318,8 +318,8 @@ void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, i
             }
         }
 
-    } else if (nread < 0) {
-        if (errno == EAGAIN) {
+    } else if (UNLIKELY(nread < 0)) {
+        if (UNLIKELY(errno == EAGAIN)) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
@@ -345,10 +345,10 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
 
     ssize_t nwrite = write(fd, resp_buffer, buf_len);
 
-    if (nwrite >= 0) {
+    if (LIKELY(nwrite >= 0)) {
         log_msg(DEBUG, "Write %d bytes to consumer agent for socket %d", nwrite, fd);
 
-        if (nwrite == buf_len) {
+        if (LIKELY(nwrite == buf_len)) {
             // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
             http_parser_init(&conn_caa->parser, HTTP_REQUEST);
@@ -361,11 +361,11 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
             conn_caa->nread_resp = 0;
 
         } else {
-            // TODO
+            // XXX
             log_msg(WARN, "Partial write for %d", fd);
         }
     } else {
-        if (errno == EAGAIN) {
+        if (UNLIKELY(errno == EAGAIN)) {
             log_msg(WARN, "Got EAGAIN on read: %s", strerror(errno));
             return;
         }
@@ -427,47 +427,6 @@ void cleanup_connection_ap(void *elem) {
         close(conn_ap->fd);
     }
 }
-
-
-
-//char *url_decode(char *target, const char *str, int length) {
-//    int d = 0; /* whether or not the string is decoded */
-//    char eStr[] = "00"; /* for a hex code */
-//
-//    strncpy(target, str, length);
-//
-//    while (!d) {
-//        d = 1;
-//        int i; /* the counter for the string */
-//
-//        for (i=0; i< strlen(target) ;++i) {
-//
-//            if(target[i] == '%') {
-//                if(target[i+1] == 0)
-//                    return target;
-//
-//                if(isxdigit(target[i+1]) && isxdigit(target[i+2])) {
-//
-//                    d = 0;
-//
-//                    /* combine the next to numbers into one */
-//                    eStr[0] = target[i+1];
-//                    eStr[1] = target[i+2];
-//
-//                    /* convert it to decimal */
-//                    long int x = strtol(eStr, NULL, 16);
-//
-//                    /* remove the hex */
-//                    memmove(&target[i+1], &target[i+3], strlen(&target[i+3])+1);
-//
-//                    target[i] = x;
-//                }
-//            }
-//        }
-//    }
-//
-//    return target;
-//}
 
 void abort_connection_caa(aeEventLoop *event_loop, connection_caa_t *conn_caa) {
     close(conn_caa->fd);
