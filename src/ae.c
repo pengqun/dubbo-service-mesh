@@ -364,40 +364,41 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
     int processed = 0, numevents;
 
     /* Nothing to do? return ASAP */
-    if (!(flags & AE_TIME_EVENTS) && !(flags & AE_FILE_EVENTS)) return 0;
+//    if (!(flags & AE_TIME_EVENTS) && !(flags & AE_FILE_EVENTS)) return 0;
 
     /* Note that we want call select() even if there are no
      * file events to process as long as we want to process time
      * events, in order to sleep until the next time event is ready
      * to fire. */
-    if (eventLoop->maxfd != -1 ||
-        ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
+//    if (eventLoop->maxfd != -1 ||
+//        ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
+    if (eventLoop->maxfd != -1) {
         int j;
-        aeTimeEvent *shortest = NULL;
+//        aeTimeEvent *shortest = NULL;
         struct timeval tv, *tvp;
 
-        if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
-            shortest = aeSearchNearestTimer(eventLoop);
-        if (shortest) {
-            long now_sec, now_ms;
-
-            aeGetTime(&now_sec, &now_ms);
-            tvp = &tv;
-
-            /* How many milliseconds we need to wait for the next
-             * time event to fire? */
-            long long ms =
-                (shortest->when_sec - now_sec)*1000 +
-                shortest->when_ms - now_ms;
-
-            if (ms > 0) {
-                tvp->tv_sec = ms/1000;
-                tvp->tv_usec = (ms % 1000)*1000;
-            } else {
-                tvp->tv_sec = 0;
-                tvp->tv_usec = 0;
-            }
-        } else {
+//        if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
+//            shortest = aeSearchNearestTimer(eventLoop);
+//        if (shortest) {
+//            long now_sec, now_ms;
+//
+//            aeGetTime(&now_sec, &now_ms);
+//            tvp = &tv;
+//
+//            /* How many milliseconds we need to wait for the next
+//             * time event to fire? */
+//            long long ms =
+//                (shortest->when_sec - now_sec)*1000 +
+//                shortest->when_ms - now_ms;
+//
+//            if (ms > 0) {
+//                tvp->tv_sec = ms/1000;
+//                tvp->tv_usec = (ms % 1000)*1000;
+//            } else {
+//                tvp->tv_sec = 0;
+//                tvp->tv_usec = 0;
+//            }
+//        } else {
             /* If we have to check for events but need to return
              * ASAP because of AE_DONT_WAIT we need to set the timeout
              * to zero */
@@ -408,15 +409,15 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                 /* Otherwise we can block */
                 tvp = NULL; /* wait forever */
             }
-        }
+//        }
 
         /* Call the multiplexing API, will return only on timeout or when
          * some event fires. */
         numevents = aeApiPoll(eventLoop, tvp);
 
-        /* After sleep callback. */
-        if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
-            eventLoop->aftersleep(eventLoop);
+//        /* After sleep callback. */
+//        if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
+//            eventLoop->aftersleep(eventLoop);
 
         for (j = 0; j < numevents; j++) {
             aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
@@ -468,9 +469,9 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             processed++;
         }
     }
-    /* Check time events */
-    if (flags & AE_TIME_EVENTS)
-        processed += processTimeEvents(eventLoop);
+//    /* Check time events */
+//    if (flags & AE_TIME_EVENTS)
+//        processed += processTimeEvents(eventLoop);
 
     return processed; /* return the number of processed file/time events */
 }
@@ -500,9 +501,10 @@ int aeWait(int fd, int mask, long long milliseconds) {
 void aeMain(aeEventLoop *eventLoop) {
     eventLoop->stop = 0;
     while (!eventLoop->stop) {
-        if (eventLoop->beforesleep != NULL)
-            eventLoop->beforesleep(eventLoop);
-        aeProcessEvents(eventLoop, AE_ALL_EVENTS|AE_CALL_AFTER_SLEEP);
+//        if (eventLoop->beforesleep != NULL)
+//            eventLoop->beforesleep(eventLoop);
+//        aeProcessEvents(eventLoop, AE_ALL_EVENTS|AE_CALL_AFTER_SLEEP);
+        aeProcessEvents(eventLoop, AE_FILE_EVENTS);
     }
 }
 

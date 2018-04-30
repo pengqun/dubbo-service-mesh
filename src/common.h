@@ -10,7 +10,7 @@
 #include <ctype.h>
 #include <arpa/inet.h>
 
-#define DEBUG_THIS_FILE
+//#define DEBUG_THIS_FILE
 #include "log.h"
 
 #ifdef __GNUC__

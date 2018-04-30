@@ -8,15 +8,19 @@
 #include "http_parser.h"
 #include "anet.h"
 
+// Adjustable params
+#define CONSUMER_HTTP_REQ_BUF_SIZE 2048
+#define CONSUMER_HTTP_RESP_BUF_SIZE 256
+
 // Consumer <-> Agent
 typedef struct connection_ca {
     int fd;
 
-    char buf_in[2048];
+    char buf_in[CONSUMER_HTTP_REQ_BUF_SIZE];
     ssize_t nread_in;
     ssize_t nwrite_in;
 
-    char buf_out[128];
+    char buf_out[CONSUMER_HTTP_RESP_BUF_SIZE];
     ssize_t nread_out;
     ssize_t nwrite_out;
 

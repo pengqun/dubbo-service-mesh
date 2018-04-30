@@ -9,23 +9,30 @@
 #include "etcd.h"
 #include "anet.h"
 
+// Adjustable params
+#define PROVIDER_HTTP_REQ_BUF_SIZE 2048
+#define PROVIDER_DUBBO_REQ_BUF_SIZE 2048
+#define PROVIDER_DUBBO_RESP_BUF_SIZE 256
+
 // Consumer Agent <-> Agent
 typedef struct connection_caa {
     int fd;
-    char buf_in[2048];
+    char buf_in[PROVIDER_HTTP_REQ_BUF_SIZE];
     size_t nread_in;
 
     char *body;
     size_t len_body;
 
-    char buf_req[2048];
+    char buf_req[PROVIDER_DUBBO_REQ_BUF_SIZE];
     int len_req;
     size_t nwrite_req;
 
-    char buf_resp[128];
+    char buf_resp[PROVIDER_DUBBO_RESP_BUF_SIZE];
     size_t nread_resp;
 
     http_parser parser;
+    bool processing;
+
     aeEventLoop *event_loop;
     struct connection_ap *conn_ap;
 } connection_caa_t;
