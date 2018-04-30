@@ -21,7 +21,7 @@ int init_connection_apa(void *elem, void *data) ;
 void cleanup_connection_apa(void *elem) ;
 
 void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
-void write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
+int write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
 void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
 void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
 
@@ -111,6 +111,7 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
             log_msg(ERR, "Failed to create writable event for write_to_remote_agent: %s", strerror(errno));
             abort_connection_ca(event_loop, conn_ca);
         }
+
         // Read from remote agent
         if (UNLIKELY(aeCreateFileEvent(event_loop, conn_apa->fd, AE_READABLE, read_from_remote_agent, conn_ca) == AE_ERR)) {
             log_msg(ERR, "Failed to create readable event for read_from_remote_agent: %s", strerror(errno));
@@ -134,7 +135,7 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
     }
 }
 
-void write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
+int write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_ca_t *conn_ca = privdata;
 
     ssize_t nwrite = write(fd, conn_ca->buf_in + conn_ca->nwrite_in,

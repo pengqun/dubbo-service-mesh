@@ -1,7 +1,7 @@
 
 #PROFILE := true
 #RELEASE := true
-#NO_LOG := true
+NO_LOG := true
 #MICRO_HTTP := true
 
 ODIR := ../out

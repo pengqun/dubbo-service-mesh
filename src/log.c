@@ -47,32 +47,32 @@ static struct log_config log_conf[LOG_LEVEL_MAX][LOG_TO_DIRMAX] =
     /* FATAL*/
     {
         { 0, 0 },                                         // stdout
-        { 1, LOG_OPT_TIME | LOG_OPT_POS | LOG_OPT_BAR },  // stderr
-        { 1, LOG_OPT_TIME | LOG_OPT_POS | LOG_OPT_BAR },  // file
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },  // stderr
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },  // file
     }, 
     /* ERR*/
     {
         { 0, 0 },
-        { 1, LOG_OPT_TIME | LOG_OPT_POS | LOG_OPT_BAR },
-        { 1, LOG_OPT_TIME | LOG_OPT_POS | LOG_OPT_BAR },
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },
     },
     /*INFO*/
     { 
-        { 1, LOG_OPT_TIME },
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },
         { 0, 0 },
-        { 1, LOG_OPT_TIME },
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },
     },
     /*DEBUG*/
     {
-        { 1, LOG_OPT_TIME | LOG_OPT_BAR | LOG_OPT_POS },
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },
         { 0, 0 },
         { 1, LOG_OPT_TIME | LOG_OPT_BAR },
     },
     /* WARN */
     {
         { 0, 0 },
-        { 1, LOG_OPT_TIME | LOG_OPT_POS | LOG_OPT_BAR },
-        { 1, LOG_OPT_TIME | LOG_OPT_POS | LOG_OPT_BAR },
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },
+        { 1, LOG_OPT_TIME | LOG_OPT_BAR },
     },
 };
 
@@ -154,12 +154,13 @@ static inline void log_to_file(int32_t type, char *time, const char *pos,
 void _log_msg(int32_t type, const char *file, int32_t  line, const char *format, ...)
 {
     /* get time string */
-//    struct tm local_time;
-//    char time_str[32]   = {0};
-//    time_t now = time(NULL);
-//    localtime_r(&now, &local_time);
-//    strftime(time_str, sizeof(time_str), "%e %b %T", &local_time);
-
+#if 1
+    struct tm local_time;
+    char time_str[32]   = {0};
+    time_t now = time(NULL);
+    localtime_r(&now, &local_time);
+    strftime(time_str, sizeof(time_str), "%e %b %T", &local_time);
+#else
     char buffer[26];
     char time_str[32];
     int millisec;
@@ -178,6 +179,7 @@ void _log_msg(int32_t type, const char *file, int32_t  line, const char *format,
 
     strftime(buffer, 26, "%Y:%m:%d %H:%M:%S", tm_info);
     sprintf(time_str, "%s.%03d", buffer, millisec);
+#endif
 
     /* get position string */
     char pos_str[32]  = {0};

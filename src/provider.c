@@ -341,7 +341,7 @@ void write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, in
 
     int add_len = sprintf(resp_buffer + pre_len, "%ld\r\n\r\n%s", data_len, data);
     size_t buf_len = pre_len + add_len;
-    log_msg(DEBUG, "Response: %.*s", buf_len, resp_buffer);
+//    log_msg(DEBUG, "Response: %.*s", buf_len, resp_buffer);
 
     ssize_t nwrite = write(fd, resp_buffer, buf_len);
 
