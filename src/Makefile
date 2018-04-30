@@ -1,7 +1,7 @@
 
 #PROFILE := true
-#RELEASE := true
-#NO_LOG := true
+RELEASE := true
+NO_LOG := true
 #MICRO_HTTP := true
 
 ODIR := ../out
@@ -31,8 +31,8 @@ CFLAGS += -DMICRO_HTTP
 endif
 
 ifdef RELEASE
-CFLAGS += -Ofast
-#CFLAGS += -O2
+#CFLAGS += -Ofast
+CFLAGS += -O2
 else
 CFLAGS += -O0
 #CFLAGS += -O0 -g

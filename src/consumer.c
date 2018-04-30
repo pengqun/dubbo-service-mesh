@@ -1,8 +1,8 @@
 #include "consumer.h"
 
 // Adjustable params
-#define NUM_CONN_FOR_CONSUMER 1024
-#define NUM_CONN_PER_PROVIDER 512
+#define NUM_CONN_FOR_CONSUMER 2048
+#define NUM_CONN_PER_PROVIDER 1024
 //#define LOAD_BALANCE_THRESHOLD 10
 
 static char neterr[256];
@@ -318,23 +318,23 @@ void cleanup_connection_apa(void *elem) {
 
 void abort_connection_ca(aeEventLoop *event_loop, connection_ca_t *conn_ca) {
     // Dump data
-    log_msg(WARN, "Conn ca: nread_in - %d, nwrite_in - %d, nread_out - %d, nwrite_out - %d",
-            conn_ca->nread_in, conn_ca->nwrite_in, conn_ca->nread_out, conn_ca->nwrite_out);
-    log_msg(WARN, "Conn ca data: buf_in - %.*s, buf_out - %.*s",
-            conn_ca->nread_in, conn_ca->buf_in, conn_ca->nread_out, conn_ca->buf_out);
-
-    aeDeleteFileEvent(event_loop, conn_ca->fd, AE_WRITABLE | AE_READABLE);
-    close(conn_ca->fd);
-    log_msg(ERR, "Abort connection to consumer with socket: %d", conn_ca->fd);
-
-    connection_apa_t *conn_apa = conn_ca->conn_apa;
-    if (conn_apa != NULL) {
-        aeDeleteFileEvent(event_loop, conn_apa->fd, AE_WRITABLE | AE_READABLE);
-        close(conn_apa->fd);
-//    PoolReturn(conn_apa->endpoint->pool, conn_apa);
-        log_msg(ERR, "Abort connection to provider agent with socket: %d", conn_apa->fd);
-    }
-
-    PoolReturn(connection_ca_pool, conn_ca);
-    log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_ca_pool->outstanding);
+//    log_msg(WARN, "Conn ca: nread_in - %d, nwrite_in - %d, nread_out - %d, nwrite_out - %d",
+//            conn_ca->nread_in, conn_ca->nwrite_in, conn_ca->nread_out, conn_ca->nwrite_out);
+//    log_msg(WARN, "Conn ca data: buf_in - %.*s, buf_out - %.*s",
+//            conn_ca->nread_in, conn_ca->buf_in, conn_ca->nread_out, conn_ca->buf_out);
+//
+//    aeDeleteFileEvent(event_loop, conn_ca->fd, AE_WRITABLE | AE_READABLE);
+//    close(conn_ca->fd);
+//    log_msg(ERR, "Abort connection to consumer with socket: %d", conn_ca->fd);
+//
+//    connection_apa_t *conn_apa = conn_ca->conn_apa;
+//    if (conn_apa != NULL) {
+//        aeDeleteFileEvent(event_loop, conn_apa->fd, AE_WRITABLE | AE_READABLE);
+//        close(conn_apa->fd);
+////    PoolReturn(conn_apa->endpoint->pool, conn_apa);
+//        log_msg(ERR, "Abort connection to provider agent with socket: %d", conn_apa->fd);
+//    }
+//
+//    PoolReturn(connection_ca_pool, conn_ca);
+//    log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_ca_pool->outstanding);
 }

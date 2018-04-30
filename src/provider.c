@@ -5,8 +5,8 @@
 #define INTERFACE "docker0"
 
 // Adjustable params
-#define NUM_CONN_FOR_CONSUMER_AGENT 512
-#define NUM_CONN_TO_PROVIDER 512
+#define NUM_CONN_FOR_CONSUMER_AGENT 1024
+#define NUM_CONN_TO_PROVIDER 1024
 
 static char neterr[256];
 static char etcd_key[128];
@@ -126,8 +126,10 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
         conn_caa->nread_in += nread;
 
         if (UNLIKELY(nparsed != nread)) {
-            log_msg(ERR, "Failed to parse HTTP response from remote agent");
-            abort_connection_caa(event_loop, conn_caa);
+            log_msg(ERR, "Failed to parse HTTP request from remote agent");
+//            abort_connection_caa(event_loop, conn_caa);
+            // ignore
+            conn_caa->nread_in = 0;
         }
 
     } else if (UNLIKELY(nread < 0)) {
@@ -497,23 +499,23 @@ void cleanup_connection_caa(void *elem) {
 
 void abort_connection_caa(aeEventLoop *event_loop, connection_caa_t *conn_caa) {
     // Dump data
-    log_msg(WARN, "Conn caa: nread_in - %d, len_req - %d, len_body - %d, nwrite_req - %d, nread_resp - %d,",
-            conn_caa->nread_in, conn_caa->len_req, conn_caa->len_body, conn_caa->nwrite_req, conn_caa->nread_resp);
-    log_msg(WARN, "Conn caa data: read - %.*s, req - %.*s, resp - %.*s",
-            conn_caa->nread_in, conn_caa->buf_in, conn_caa->len_req, conn_caa->buf_req,
-            conn_caa->nread_resp, conn_caa->buf_resp) ;
+//    log_msg(WARN, "Conn caa: nread_in - %d, len_req - %d, len_body - %d, nwrite_req - %d, nread_resp - %d,",
+//            conn_caa->nread_in, conn_caa->len_req, conn_caa->len_body, conn_caa->nwrite_req, conn_caa->nread_resp);
+//    log_msg(WARN, "Conn caa data: read - %.*s, req - %.*s, resp - %.*s",
+//            conn_caa->nread_in, conn_caa->buf_in, conn_caa->len_req, conn_caa->buf_req,
+//            conn_caa->nread_resp, conn_caa->buf_resp) ;
 
-    aeDeleteFileEvent(event_loop, conn_caa->fd, AE_WRITABLE | AE_READABLE);
-    close(conn_caa->fd);
-    log_msg(ERR, "Abort connection to consumer agent with socket: %d", conn_caa->fd);
-
-    connection_ap_t *conn_ap = conn_caa->conn_ap;
-    if (conn_ap != NULL) {
-        aeDeleteFileEvent(event_loop, conn_ap->fd, AE_WRITABLE | AE_READABLE);
-        close(conn_ap->fd);
-        log_msg(ERR, "Abort connection to local provider with socket: %d", conn_ap->fd);
-    }
-
-    PoolReturn(connection_caa_pool, conn_caa);
-    log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_caa_pool->outstanding);
+//    aeDeleteFileEvent(event_loop, conn_caa->fd, AE_WRITABLE | AE_READABLE);
+//    close(conn_caa->fd);
+//    log_msg(ERR, "Abort connection to consumer agent with socket: %d", conn_caa->fd);
+//
+//    connection_ap_t *conn_ap = conn_caa->conn_ap;
+//    if (conn_ap != NULL) {
+//        aeDeleteFileEvent(event_loop, conn_ap->fd, AE_WRITABLE | AE_READABLE);
+//        close(conn_ap->fd);
+//        log_msg(ERR, "Abort connection to local provider with socket: %d", conn_ap->fd);
+//    }
+//
+//    PoolReturn(connection_caa_pool, conn_caa);
+//    log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_caa_pool->outstanding);
 }

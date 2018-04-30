@@ -9,8 +9,8 @@
 #include "anet.h"
 
 // Adjustable params
-#define CONSUMER_HTTP_REQ_BUF_SIZE 2048
-#define CONSUMER_HTTP_RESP_BUF_SIZE 256
+#define CONSUMER_HTTP_REQ_BUF_SIZE 4096
+#define CONSUMER_HTTP_RESP_BUF_SIZE 512
 
 // Consumer <-> Agent
 typedef struct connection_ca {
