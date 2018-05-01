@@ -28,7 +28,8 @@ endif
 
 ifdef RELEASE
 #CFLAGS += -Ofast
-CFLAGS += -O2 -g
+CFLAGS += -O2
+#CFLAGS += -O2 -g
 else
 #CFLAGS += -O0
 CFLAGS += -O0 -g

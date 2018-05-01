@@ -44,9 +44,7 @@ bool _write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata) ;
 void abort_connection_ca(aeEventLoop *event_loop, connection_ca_t *conn_ca) ;
 
 endpoint_t *get_endpoint_least_loaded() ;
-
 endpoint_t *get_endpoint_min_latency() ;
-
 endpoint_t *get_endpoint_min_latency_prob() ;
 
 void consumer_init() {
@@ -251,7 +249,7 @@ bool _write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata) {
     connection_ca_t *conn_ca = privdata;
     if (UNLIKELY(conn_ca->fd < 0)) {
         log_msg(WARN, "Connection closed for socket %d, ignore write_to_remote_agent", fd);
-//        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         return true;
     }
 
@@ -268,10 +266,14 @@ bool _write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata) {
 #ifdef LATENCY_AWARE
             // Record request start
             connection_apa_t *conn_apa = conn_ca->conn_apa;
-            conn_apa->req_start = get_current_time_ms();
+            if (conn_apa != NULL) {
+                conn_apa->req_start = get_current_time_ms();
+            }
 #endif
+            return true;
         } else {
             log_msg(WARN, "Partial write for socket %d", fd);
+            return false;
         }
     } else {
 //        if (UNLIKELY(errno == EWOULDBLOCK)) {
@@ -317,9 +319,11 @@ void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int
 
 #ifdef LATENCY_AWARE
         connection_apa_t *conn_apa = conn_ca->conn_apa;
-        conn_apa->endpoint->num_reqs++;
+        if (conn_apa != NULL) {
+            conn_apa->endpoint->num_reqs++;
 //        conn_apa->endpoint->total_ms += (get_current_time_ms() - conn_apa->req_start) - 10;
-        conn_apa->endpoint->total_ms += (get_current_time_ms() - conn_apa->req_start);
+            conn_apa->endpoint->total_ms += (get_current_time_ms() - conn_apa->req_start);
+        }
 #endif
 
     } else if (UNLIKELY(nread < 0)) {
@@ -371,6 +375,10 @@ bool _write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata) {
             } else {
                 log_msg(ERR, "No connection to remote agent to release for socket %d", fd);
             }
+            return true;
+        } else {
+            log_msg(WARN, "Partial write for socket %d", fd);
+            return false;
         }
     } else {
 //        if (UNLIKELY(errno == EWOULDBLOCK)) {

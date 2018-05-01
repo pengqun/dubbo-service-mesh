@@ -19,7 +19,7 @@ RUN make clean && make
 # Runner container
 FROM registry.cn-hangzhou.aliyuncs.com/tianchi4-docker/debian-jdk8
 
-#COPY sources.list /etc/apt
+COPY sources.list /etc/apt
 
 RUN apt-get update
 #RUN apt-get install -y net-tools netcat procps google-perftools binutils
