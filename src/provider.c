@@ -10,7 +10,7 @@
 #define NUM_CONN_FOR_CONSUMER_AGENT 512
 #define NUM_CONN_TO_PROVIDER 512
 
-//#define DO_LEN_CHECK 1
+//#define DO_LEN_CHECK
 
 #define DUBBO_HEADER_LEN 16
 #define DUBBO_DATA_STATUS_LEN 2
@@ -350,11 +350,11 @@ void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, i
                 log_msg(WARN, "Incomplete response: %.*s", nread, conn_caa->buf_resp);
                 return;
             }
-            if (conn_caa->buf_resp[DUBBO_HEADER_LEN] != '1') {
-                log_msg(WARN, "Not dubbo response: %.*s", conn_caa->nread_resp, conn_caa->buf_resp);
-                conn_caa->nread_resp = 0;
-                return;
-            }
+//            if (conn_caa->buf_resp[DUBBO_HEADER_LEN] != '1') {
+//                log_msg(WARN, "Not dubbo response: %.*s", conn_caa->nread_resp, conn_caa->buf_resp);
+//                conn_caa->nread_resp = 0;
+//                return;
+//            }
 
 #ifdef DO_LEN_CHECK
             if (data_len > 100) {

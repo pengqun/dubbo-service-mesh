@@ -120,8 +120,8 @@ static inline void log_with_option(int32_t type, int32_t fpno, char *time,
     flockfile(log_output_fps[fpno]);
     
     if (log_conf[type][fpno].log_opt & LOG_OPT_TIME) 
-//        fprintf(log_output_fps[fpno], "%s  ", time);
-        fprintf(log_output_fps[fpno], "%s - [%d]  ", time, getpid());
+        fprintf(log_output_fps[fpno], "%s  ", time);
+//        fprintf(log_output_fps[fpno], "%s - [%d]  ", time, getpid());
 
     if (log_conf[type][fpno].log_opt & LOG_OPT_BAR)
         fprintf(log_output_fps[fpno], "[%s] ", log_type_str[type]);

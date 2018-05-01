@@ -8,8 +8,7 @@
  * Dump the current stack trace using glibc's backtrace().
  * Output memory addresses can be translated by 'addr2line'.
  */
-void dump_stack()
-{
+void dump_stack() {
     int i, nptrs;
     void *buffer[100];
     char **strings;
@@ -34,8 +33,7 @@ void dump_stack()
 /*
  * Set the coredump size of current process.
  */
-void core_dump_config()
-{
+void core_dump_config() {
     char *dump_size_str;
     int unlimited = 1;
     rlim_t max_dump = 0;
@@ -88,11 +86,6 @@ void core_dump_config()
     }
 }
 
-/*
- * Init debug environment.
- */
-void init_debug()
-{
-    //atomic_set(&dump_cnt, 1);
+void init_debug() {
     core_dump_config();
 }

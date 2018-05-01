@@ -10,6 +10,7 @@
 //#define NUM_CONN_PER_PROVIDER 256
 
 //#define LOAD_BALANCE_THRESHOLD 10000
+//#define LATENCY_AWARE
 
 static char neterr[256];
 
@@ -17,8 +18,10 @@ static endpoint_t endpoints[3];
 static int num_endpoints = 0;
 //static int round_robin_id = 0;
 
+#ifdef LATENCY_AWARE
 static int total_score = 0;
 static int request_counter = 0;
+#endif
 
 static Pool *connection_ca_pool = NULL;
 
@@ -176,7 +179,7 @@ endpoint_t *get_remote_endpoint() {
 //                endpoint->ip, endpoint->port, min_latency, endpoint->total_ms, endpoint->num_reqs);
 //    }
 
-#if 0
+#ifdef LATENCY_AWARE
     // Load balance: min latency with probability
     if (request_counter++ % 100 == 0) {
         total_score = 0;
@@ -229,10 +232,11 @@ bool _write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata) {
             // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
 
+#ifdef LATENCY_AWARE
             // Record request start
             connection_apa_t *conn_apa = conn_ca->conn_apa;
             conn_apa->req_start = get_current_time_ms();
-
+#endif
         } else {
             log_msg(WARN, "Partial write for socket %d", fd);
         }
@@ -278,9 +282,11 @@ void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int
             }
 //        }
 
+#ifdef LATENCY_AWARE
         connection_apa_t *conn_apa = conn_ca->conn_apa;
         conn_apa->endpoint->num_reqs++;
         conn_apa->endpoint->total_ms += (get_current_time_ms() - conn_apa->req_start) - 10;
+#endif
 
     } else if (UNLIKELY(nread < 0)) {
         if (errno == EAGAIN) {
@@ -366,10 +372,12 @@ void on_etcd_service_endpoint(const char *key, const char *value, void *arg) {
     endpoints[num_endpoints].ip = ip;
     endpoints[num_endpoints].port = atoi(port);
 
+#ifdef LATENCY_AWARE
     // Set up initial latency stats to avoid zero case
     endpoints[num_endpoints].total_ms = 1;
     endpoints[num_endpoints].num_reqs = 1;
     endpoints[num_endpoints].score = 0;
+#endif
 
     // Set up connection pool to this endpoint
     endpoints[num_endpoints].conn_pool = PoolInit(
