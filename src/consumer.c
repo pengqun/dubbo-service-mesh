@@ -10,8 +10,10 @@
 //#define NUM_CONN_PER_PROVIDER 256
 
 #ifdef LATENCY_AWARE
-#define LOAD_BALANCE_THRESHOLD 10000
-#define LOAD_PROTECT_THRESHOLD 100
+//#define LOAD_BALANCE_THRESHOLD 10000
+//#define LOAD_PROTECT_THRESHOLD 100
+#define LOAD_BALANCE_THRESHOLD 1000
+#define LOAD_PROTECT_THRESHOLD 150
 #endif
 
 static char neterr[256];
@@ -21,8 +23,8 @@ static int num_endpoints = 0;
 //static int round_robin_id = 0;
 
 #ifdef LATENCY_AWARE
-static int total_score = 0;
-static int request_counter = 0;
+//static int total_score = 0;
+//static int request_counter = 0;
 #endif
 
 static Pool *connection_ca_pool = NULL;
@@ -99,6 +101,8 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
     if (LIKELY(nread > 0)) {
         log_msg(DEBUG, "Read %d bytes from consumer for socket %d", nread, fd);
         conn_ca->nread_in += nread;
+
+//        log_msg(INFO, "Read: %.*s", conn_ca->nread_in, conn_ca->buf_in);
 
         // Reset buf_out pointers
         conn_ca->nread_out = 0;
@@ -204,6 +208,7 @@ endpoint_t *get_endpoint_min_latency() {
     return endpoint;
 }
 
+#if 0
 endpoint_t *get_endpoint_min_latency_prob() {
     endpoint_t *endpoint = &endpoints[0];
     if (request_counter++ % 100 == 0) {
@@ -239,6 +244,8 @@ endpoint_t *get_endpoint_min_latency_prob() {
     }
     return endpoint;
 }
+#endif
+
 #endif
 
 void write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
@@ -418,7 +425,7 @@ void on_etcd_service_endpoint(const char *key, const char *value, void *arg) {
     // Set up initial latency stats to avoid zero case
     endpoints[num_endpoints].total_ms = 1;
     endpoints[num_endpoints].num_reqs = 1;
-    endpoints[num_endpoints].score = 0;
+//    endpoints[num_endpoints].score = 0;
 #endif
 
     // Set up connection pool to this endpoint

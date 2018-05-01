@@ -9,8 +9,8 @@
 #include "anet.h"
 
 // Adjustable params
-#define CONSUMER_HTTP_REQ_BUF_SIZE 2048
-#define CONSUMER_HTTP_RESP_BUF_SIZE 256
+#define CONSUMER_HTTP_REQ_BUF_SIZE 1504
+#define CONSUMER_HTTP_RESP_BUF_SIZE 128
 #define LATENCY_AWARE
 
 // Consumer <-> Agent
@@ -43,7 +43,7 @@ typedef struct endpoint {
 #ifdef LATENCY_AWARE
     long total_ms;
     int num_reqs;
-    int score;
+//    int score;
 #endif
     Pool *conn_pool; // pool of connection_apa
 } endpoint_t;

@@ -155,7 +155,7 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
         http_parser_execute(&conn_caa->parser, &parser_settings,
                             conn_caa->buf_in + conn_caa->nread_in, (size_t) nread);
 
-        log_msg(ERR, "Consumer agent closed connection for socket %d", fd);
+        log_msg(WARN, "Consumer agent closed connection for socket %d", fd);
         aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         close(fd);
         conn_caa->fd = -1;

@@ -6,7 +6,10 @@
 #include <getopt.h>
 #include <signal.h>
 #include <sys/resource.h>
-#include <sys/prctl.h>
+//#include <sys/prctl.h>
+//#include <arpa/inet.h>
+//#include <netinet/in.h>
+//#include <netinet/tcp.h>
 
 #ifdef PROFILER
 #include <gperftools/profiler.h>

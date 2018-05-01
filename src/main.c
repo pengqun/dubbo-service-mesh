@@ -12,8 +12,8 @@
 // Adjustable params
 //#define EV_MAX_SET_SIZE 4096
 #define EV_MAX_SET_SIZE 2048
-#define TCP_LISTEN_BACKLOG 40000
-#define MAX_ACCEPTS_PER_CALL 1
+#define TCP_LISTEN_BACKLOG 1024
+//#define MAX_ACCEPTS_PER_CALL 1
 
 
 static int dubbo_port = 0;
@@ -28,7 +28,7 @@ int do_listen(int server_port) ;
 void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) ;
 
 //void set_cpu_affinity();
-void do_fork() ;
+//void do_fork() ;
 void monitor_accepts(int listen_fd) ;
 
 void signal_handler(int sig) ;
@@ -44,16 +44,16 @@ int main(int argc, char **argv) {
             case 't':
                 if (strcmp(optarg, "consumer") == 0) {
                     agent_type = AGENT_CONSUMER;
-                    prctl(PR_SET_NAME, "agent-consumer", 0, 0, 0);
+//                    prctl(PR_SET_NAME, "agent-consumer", 0, 0, 0);
                 } else if (strcmp(optarg, "provider-small") == 0) {
                     agent_type = AGENT_PROVIDER;
-                    prctl(PR_SET_NAME, "agent-small", 0, 0, 0);
+//                    prctl(PR_SET_NAME, "agent-small", 0, 0, 0);
                 } else if (strcmp(optarg, "provider-medium") == 0) {
                     agent_type = AGENT_PROVIDER;
-                    prctl(PR_SET_NAME, "agent-medium", 0, 0, 0);
+//                    prctl(PR_SET_NAME, "agent-medium", 0, 0, 0);
                 } else {
                     agent_type = AGENT_PROVIDER;
-                    prctl(PR_SET_NAME, "agent-large", 0, 0, 0);
+//                    prctl(PR_SET_NAME, "agent-large", 0, 0, 0);
                 }
                 break;
             case 'e':
@@ -74,10 +74,12 @@ int main(int argc, char **argv) {
         }
     }
 
+#ifndef NO_LOG
     init_log(log_dir);
     log_msg(INFO, "Init log with dir %s", log_dir);
+#endif
 
-    init_signals();
+//    init_signals();
 //    init_debug();
 
     setpriority(PRIO_PROCESS, 0, -20);
@@ -121,6 +123,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 
+#if 0
 void init_signals() {
     struct sigaction sigact;
     sigact.sa_handler = signal_handler;
@@ -176,6 +179,7 @@ void signal_handler(int sig) {
 
     aeStop(the_event_loop);
 }
+#endif
 
 int do_listen(int server_port) {
     int listen_fd = anetTcpServer(neterr, server_port, NULL, TCP_LISTEN_BACKLOG);
@@ -198,30 +202,42 @@ void monitor_accepts(int listen_fd) {
 }
 
 void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
-    int client_port, client_fd, max = MAX_ACCEPTS_PER_CALL;
+    int client_port, client_fd;
+//    int max = MAX_ACCEPTS_PER_CALL;
     char client_ip[NET_IP_STR_LEN];
 
-    while (max--) {
-        client_fd = anetTcpAccept(neterr, fd, client_ip, sizeof(client_ip), &client_port);
-        if (UNLIKELY(client_fd == ANET_ERR)) {
-            if (errno != EWOULDBLOCK) {
-                log_msg(ERR, "Failed to accept client connection: %s", neterr);
-            }
-            return;
+//    while (max--) {
+    client_fd = anetTcpAccept(neterr, fd, client_ip, sizeof(client_ip), &client_port);
+    if (UNLIKELY(client_fd == ANET_ERR)) {
+        if (errno != EWOULDBLOCK) {
+            log_msg(ERR, "Failed to accept client connection: %s", neterr);
         }
-//        log_msg(INFO, "Accept client connection: %s:%d with socket %d", client_ip, client_port, client_fd);
-
-        anetNonBlock(NULL, client_fd);
-        anetEnableTcpNoDelay(NULL, client_fd);
-
-        if (agent_type == AGENT_CONSUMER) {
-            consumer_http_handler(el, client_fd);
-        } else {
-            provider_http_handler(el, client_fd);
-        }
+        return;
     }
+//  log_msg(INFO, "Accept client connection: %s:%d with socket %d", client_ip, client_port, client_fd);
+
+    anetNonBlock(NULL, client_fd);
+    anetEnableTcpNoDelay(NULL, client_fd);
+
+//    int snd_size = 8388608;
+//    setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, (char *)&snd_size, (int)sizeof(snd_size));
+//    int rcv_size = 8388608;
+//    setsockopt(client_fd, SOL_SOCKET, SO_RCVBUF, (char *)&rcv_size, (int)sizeof(rcv_size));
+
+//    int busy_poll = 100;
+//    if (setsockopt(client_fd, SOL_SOCKET, SO_BUSY_POLL, (char *)&busy_poll, sizeof(busy_poll)) < 0) {
+//        log_msg(ERR, "Failed to set SO_BUSY_POLL: %s", strerror(errno));
+//    }
+
+    if (agent_type == AGENT_CONSUMER) {
+        consumer_http_handler(el, client_fd);
+    } else {
+        provider_http_handler(el, client_fd);
+    }
+//    }
 }
 
+#if 0
 void do_fork() {
     pid_t pid = fork();
     if (pid == -1) {
@@ -234,6 +250,7 @@ void do_fork() {
         log_msg(INFO, "In parent process, forked child with PID %d", pid);
     }
 }
+#endif
 
 #if 0
 void set_cpu_affinity() {
