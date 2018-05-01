@@ -1,6 +1,7 @@
 #include "main.h"
 #include "consumer.h"
 #include "provider.h"
+#include "debug.h"
 
 #define AGENT_CONSUMER 1
 #define AGENT_PROVIDER 2
@@ -10,7 +11,7 @@
 
 // Adjustable params
 #define EV_MAX_SET_SIZE 4096
-#define TCP_LISTEN_BACKLOG 1024
+#define TCP_LISTEN_BACKLOG 40000
 #define MAX_ACCEPTS_PER_CALL 1
 
 
@@ -21,13 +22,15 @@ static aeEventLoop *the_event_loop = NULL;
 static char neterr[256];
 
 
-void signal_handler(int sig) ;
+void init_signals() ;
 int do_listen(int server_port) ;
 void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) ;
 
 //void set_cpu_affinity();
 void do_fork() ;
 void monitor_accepts(int listen_fd) ;
+
+void signal_handler(int sig) ;
 
 int main(int argc, char **argv) {
     int c;
@@ -40,8 +43,16 @@ int main(int argc, char **argv) {
             case 't':
                 if (strcmp(optarg, "consumer") == 0) {
                     agent_type = AGENT_CONSUMER;
+                    prctl(PR_SET_NAME, "agent-consumer", 0, 0, 0);
+                } else if (strcmp(optarg, "provider-small") == 0) {
+                    agent_type = AGENT_PROVIDER;
+                    prctl(PR_SET_NAME, "agent-small", 0, 0, 0);
+                } else if (strcmp(optarg, "provider-medium") == 0) {
+                    agent_type = AGENT_PROVIDER;
+                    prctl(PR_SET_NAME, "agent-medium", 0, 0, 0);
                 } else {
                     agent_type = AGENT_PROVIDER;
+                    prctl(PR_SET_NAME, "agent-large", 0, 0, 0);
                 }
                 break;
             case 'e':
@@ -65,7 +76,12 @@ int main(int argc, char **argv) {
     init_log(log_dir);
     log_msg(INFO, "Init log with dir %s", log_dir);
 
+    init_signals();
+
+    init_debug();
+
     signal(SIGINT, signal_handler);
+    signal(SIGSEGV, signal_handler);
 
     setpriority(PRIO_PROCESS, 0, -20);
     
@@ -75,15 +91,13 @@ int main(int argc, char **argv) {
     log_msg(INFO, "Init etcd to host %s", etcd_host);
 
     if (agent_type == AGENT_CONSUMER) {
-        do_fork();
+//        do_fork();
         int listen_fd = do_listen(server_port);
-        prctl(PR_SET_NAME, "agent-consumer", 0, 0, 0);
         monitor_accepts(listen_fd);
         consumer_init();
     } else {
-        do_fork();
+//        do_fork();
         int listen_fd = do_listen(server_port);
-        prctl(PR_SET_NAME, "agent-provider", 0, 0, 0);
         monitor_accepts(listen_fd);
         provider_init(server_port, dubbo_port);
     }
@@ -110,8 +124,59 @@ int main(int argc, char **argv) {
     return 0;
 }
 
+void init_signals() {
+    struct sigaction sigact;
+    sigact.sa_handler = signal_handler;
+    sigemptyset(&sigact.sa_mask);
+    sigact.sa_flags = 0;
+
+    sigaction(SIGINT, &sigact, NULL);
+    sigaction(SIGQUIT, &sigact, NULL);
+    sigaction(SIGTERM, &sigact, NULL);
+    sigaction(SIGHUP, &sigact, NULL);
+    sigaction(SIGSEGV, &sigact, NULL);
+    sigaction(SIGPIPE, &sigact, NULL);
+    sigaction(SIGCHLD, &sigact, NULL);
+    sigaction(SIGURG, &sigact, NULL);
+    sigaction(SIGUSR1, &sigact, NULL);
+}
+
 void signal_handler(int sig) {
-    log_msg(INFO, "Got signal %d", sig);
+    switch (sig) {
+        case SIGQUIT:
+            log_msg_r(INFO, "QUIT signal ended program.");
+            break;
+        case SIGTERM:
+            log_msg_r(INFO, "TERM signal ended program.");
+            break;
+        case SIGINT:
+            log_msg_r(INFO, "INT signal ended program.");
+            break;
+        case SIGHUP:
+            /* Ignore SIGHUP signal, just print a warning. */
+            log_msg_r(WARN, "Program hanged up.");
+            break;
+        case SIGSEGV:
+            log_msg_r(ERR, "Segmentation fault!");
+            dump_stack();
+            /* To generate the core file. */
+            abort();
+        case SIGPIPE:
+            log_msg_r(INFO, "Receive SIGPIPE.");
+            break;
+        case SIGCHLD:
+            //log_msg_r(INFO, "Receive SIGCHLD.");
+            break;
+        case SIGUSR1:
+            log_msg_r(INFO, "Receive SIGUSR1.");
+            break;
+        case SIGURG:
+            log_msg_r(INFO, "Receive SIGURG.");
+            break;
+        default:
+            log_msg_r(FATAL, "Unknown signal(%d) ended program!", sig);
+    }
+
     aeStop(the_event_loop);
 }
 

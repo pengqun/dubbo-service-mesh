@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
-#include <string.h> /* for strncpy */
-
+#include <string.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -28,4 +28,10 @@ char *get_local_ip_addr(const char *interface) {
     close(fd);
 
     return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
+}
+
+long get_current_time_ms() {
+    struct timespec spec;
+    clock_gettime(CLOCK_REALTIME, &spec);
+    return spec.tv_sec * 1000 + (long)(spec.tv_nsec / 1.0e6);
 }

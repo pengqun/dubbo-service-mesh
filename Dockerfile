@@ -38,4 +38,9 @@ COPY start-agent.sh /usr/local/bin
 
 RUN set -ex && mkdir -p /root/logs
 
+#RUN useradd -m docker && echo "docker:docker" | chpasswd && adduser docker sudo
+#USER docker
+
+#COPY --from=builder /root/workspace/agent/out/mesh-agent /root/logs/mesh-agent
+
 ENTRYPOINT ["docker-entrypoint.sh"]

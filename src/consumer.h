@@ -9,8 +9,8 @@
 #include "anet.h"
 
 // Adjustable params
-#define CONSUMER_HTTP_REQ_BUF_SIZE 4096
-#define CONSUMER_HTTP_RESP_BUF_SIZE 512
+#define CONSUMER_HTTP_REQ_BUF_SIZE 2048
+#define CONSUMER_HTTP_RESP_BUF_SIZE 256
 
 // Consumer <-> Agent
 typedef struct connection_ca {
@@ -31,11 +31,15 @@ typedef struct connection_ca {
 typedef struct connection_apa {
     int fd;
     struct endpoint *endpoint;
+    long req_start;
 } connection_apa_t;
 
 typedef struct endpoint {
     char *ip;
     int port;
+    long total_ms;
+    int num_reqs;
+    int score;
     Pool *conn_pool; // pool of connection_apa
 } endpoint_t;
 

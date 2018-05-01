@@ -1,17 +1,24 @@
 #include "consumer.h"
+#include "util.h"
 
 // Adjustable params
+//#define NUM_CONN_FOR_CONSUMER 2048
+//#define NUM_CONN_PER_PROVIDER 1024
 #define NUM_CONN_FOR_CONSUMER 1024
 #define NUM_CONN_PER_PROVIDER 512
 //#define NUM_CONN_FOR_CONSUMER 512
 //#define NUM_CONN_PER_PROVIDER 256
-//#define LOAD_BALANCE_THRESHOLD 10
+
+//#define LOAD_BALANCE_THRESHOLD 10000
 
 static char neterr[256];
 
 static endpoint_t endpoints[3];
 static int num_endpoints = 0;
 //static int round_robin_id = 0;
+
+static int total_score = 0;
+static int request_counter = 0;
 
 static Pool *connection_ca_pool = NULL;
 
@@ -29,6 +36,7 @@ void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int
 void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask) ;
 bool _write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata) ;
 
+endpoint_t *get_remote_endpoint() ;
 void abort_connection_ca(aeEventLoop *event_loop, connection_ca_t *conn_ca) ;
 
 void consumer_init() {
@@ -39,6 +47,8 @@ void consumer_init() {
     connection_ca_pool = PoolInit(NUM_CONN_FOR_CONSUMER, NUM_CONN_FOR_CONSUMER,
                                   sizeof(connection_ca_t), NULL, NULL, NULL, NULL, NULL);
     PoolPrintSaturation(connection_ca_pool);
+
+    srand((unsigned int) time(NULL));
 
     log_msg(INFO, "Consumer init done");
 }
@@ -89,21 +99,7 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
         // Get connection to remote agent
         connection_apa_t *conn_apa = conn_ca->conn_apa;
         if (LIKELY(conn_apa == NULL)) {
-            // Load balance: least-loaded
-            endpoint_t *endpoint = &endpoints[0];
-            int min_outstanding = endpoints[0].conn_pool->outstanding;
-#ifdef LOAD_BALANCE_THRESHOLD
-            if (min_outstanding > LOAD_BALANCE_THRESHOLD) {
-#endif
-                for (int i = 1; i < num_endpoints; i++) {
-                    if (min_outstanding > endpoints[i].conn_pool->outstanding) {
-                        min_outstanding = endpoints[i].conn_pool->outstanding;
-                        endpoint = &endpoints[i];
-                    }
-                }
-#ifdef LOAD_BALANCE_THRESHOLD
-            }
-#endif
+            endpoint_t *endpoint = get_remote_endpoint();
             conn_apa = PoolGet(endpoint->conn_pool);
             if (UNLIKELY(conn_apa == NULL)) {
                 log_msg(ERR, "No connection to remote agent available for socket %d", fd);
@@ -111,8 +107,8 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
                 return;
             }
             conn_ca->conn_apa = conn_apa;
-            log_msg(DEBUG, "Pick up connection to %s:%d with socket %d and outstanding %d",
-                    conn_apa->endpoint->ip, conn_apa->endpoint->port, conn_apa->fd, min_outstanding);
+            log_msg(DEBUG, "Pick up connection to %s:%d with socket %d",
+                    conn_apa->endpoint->ip, conn_apa->endpoint->port, conn_apa->fd);
         }
 
 //        if (UNLIKELY(!_write_to_remote_agent(event_loop, conn_apa->fd, conn_ca))) {
@@ -139,13 +135,76 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
         abort_connection_ca(event_loop, conn_ca);
 
     } else {
-        log_msg(INFO, "Consumer closed connection for socket %d", fd);
+//        log_msg(INFO, "Consumer closed connection for socket %d", fd);
         aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         PoolReturn(connection_ca_pool, conn_ca);
         conn_ca->fd = -1;
         close(fd);
         log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_ca_pool->outstanding);
     }
+}
+
+endpoint_t *get_remote_endpoint() {
+    endpoint_t *endpoint = &endpoints[0];
+
+//    if (UNLIKELY(endpoint->num_reqs < LOAD_BALANCE_THRESHOLD)) {
+        // Load balance: least-loaded
+        int min_outstanding = endpoints[0].conn_pool->outstanding;
+        for (int i = 1; i < num_endpoints; i++) {
+            if (min_outstanding > endpoints[i].conn_pool->outstanding) {
+                min_outstanding = endpoints[i].conn_pool->outstanding;
+                endpoint = &endpoints[i];
+            }
+        }
+        log_msg(DEBUG, "Load balance to endpoint %s:%d with outstanding %d",
+                endpoint->ip, endpoint->port, min_outstanding);
+//    } else {
+//        // Load balance: min-latency
+//        long min_latency = endpoints[0].total_ms / endpoints[0].num_reqs;
+//        for (int i = 1; i < num_endpoints; i++) {
+//            long latency = endpoints[i].total_ms / endpoints[i].num_reqs;
+//            if (min_latency > latency) {
+//                min_latency = latency;
+//                endpoint = &endpoints[i];
+//            }
+//        }
+//        for (int i = 0; i < num_endpoints; i++) {
+//            log_msg(INFO, "Endpoint %d: %ld ms = %ld / %d", i, endpoints[i].total_ms / endpoints[i].num_reqs,
+//                    endpoints[i].total_ms, endpoints[i].num_reqs);
+//        }
+//        log_msg(DEBUG, "Load balance to endpoint %s:%d with latency %ld ms (%ld / %d)",
+//                endpoint->ip, endpoint->port, min_latency, endpoint->total_ms, endpoint->num_reqs);
+//    }
+
+#if 0
+    // Load balance: min latency with probability
+    if (request_counter++ % 100 == 0) {
+        total_score = 0;
+        for (int i = 0; i < num_endpoints; i++) {
+            endpoint[i].score = (int) (1000000 / (endpoints[i].total_ms / endpoints[i].num_reqs));
+            total_score += endpoint[i].score;
+            log_msg(DEBUG, "Endpoint %d: latency - %ld ms (%ld / %d), score - %d", i,
+                    endpoints[i].total_ms / endpoints[i].num_reqs,
+                    endpoints[i].total_ms, endpoints[i].num_reqs, endpoint[i].score);
+        }
+    }
+
+    int pointer = rand() % total_score;
+    log_msg(DEBUG, "Generate random pointer %d with total score %d", pointer, total_score);
+
+    for (int i = 0; i < num_endpoints; i++) {
+        if (pointer < endpoint[i].score) {
+            endpoint = &endpoints[i];
+            break;
+        }
+        pointer -= endpoint[i].score;
+    }
+    log_msg(DEBUG, "Load balance to endpoint %s:%d: latency - %ld ms (%ld / %d)",
+            endpoint->ip, endpoint->port, endpoint->total_ms / endpoint->num_reqs,
+            endpoint->total_ms, endpoint->num_reqs);
+#endif
+
+    return endpoint;
 }
 
 void write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
@@ -156,6 +215,7 @@ bool _write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata) {
     connection_ca_t *conn_ca = privdata;
     if (UNLIKELY(conn_ca->fd < 0)) {
         log_msg(WARN, "Connection closed for socket %d, ignore write_to_remote_agent", fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         return true;
     }
 
@@ -168,6 +228,11 @@ bool _write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata) {
         if (LIKELY(conn_ca->nwrite_in == conn_ca->nread_in)) {
             // Done writing
             aeDeleteFileEvent(event_loop, fd, AE_WRITABLE);
+
+            // Record request start
+            connection_apa_t *conn_apa = conn_ca->conn_apa;
+            conn_apa->req_start = get_current_time_ms();
+
         } else {
             log_msg(WARN, "Partial write for socket %d", fd);
         }
@@ -190,6 +255,7 @@ void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int
     connection_ca_t *conn_ca = privdata;
     if (UNLIKELY(conn_ca->fd < 0)) {
         log_msg(WARN, "Connection closed for socket %d, ignore read_from_remote_agent", fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         return;
     }
 
@@ -211,6 +277,10 @@ void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int
                 abort_connection_ca(event_loop, conn_ca);
             }
 //        }
+
+        connection_apa_t *conn_apa = conn_ca->conn_apa;
+        conn_apa->endpoint->num_reqs++;
+        conn_apa->endpoint->total_ms += (get_current_time_ms() - conn_apa->req_start) - 10;
 
     } else if (UNLIKELY(nread < 0)) {
         if (errno == EAGAIN) {
@@ -235,6 +305,7 @@ bool _write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata) {
     connection_ca_t *conn_ca = privdata;
     if (UNLIKELY(conn_ca->fd < 0)) {
         log_msg(WARN, "Connection closed for socket %d, ignore write_to_consumer", fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         return true;
     }
 
@@ -294,6 +365,11 @@ void on_etcd_service_endpoint(const char *key, const char *value, void *arg) {
 
     endpoints[num_endpoints].ip = ip;
     endpoints[num_endpoints].port = atoi(port);
+
+    // Set up initial latency stats to avoid zero case
+    endpoints[num_endpoints].total_ms = 1;
+    endpoints[num_endpoints].num_reqs = 1;
+    endpoints[num_endpoints].score = 0;
 
     // Set up connection pool to this endpoint
     endpoints[num_endpoints].conn_pool = PoolInit(

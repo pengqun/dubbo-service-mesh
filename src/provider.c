@@ -5,10 +5,12 @@
 #define INTERFACE "docker0"
 
 // Adjustable params
-#define NUM_CONN_FOR_CONSUMER_AGENT 1024
-#define NUM_CONN_TO_PROVIDER 1024
-//#define NUM_CONN_FOR_CONSUMER_AGENT 512
-//#define NUM_CONN_TO_PROVIDER 512
+//#define NUM_CONN_FOR_CONSUMER_AGENT 1024
+//#define NUM_CONN_TO_PROVIDER 1024
+#define NUM_CONN_FOR_CONSUMER_AGENT 512
+#define NUM_CONN_TO_PROVIDER 512
+
+//#define DO_LEN_CHECK 1
 
 #define DUBBO_HEADER_LEN 16
 #define DUBBO_DATA_STATUS_LEN 2
@@ -110,6 +112,7 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
     connection_caa_t *conn_caa = privdata;
     if (UNLIKELY(conn_caa->fd < 0)) {
         log_msg(WARN, "Connection closed for socket %d, ignore read_from_consumer_agent", fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         return;
     }
 
@@ -118,10 +121,13 @@ void read_from_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata, i
 
     if (LIKELY(nread > 0)) {
         log_msg(DEBUG, "Read %d bytes from consumer agent for socket %d", nread, fd);
-//        if (nread > 1500) {
-//            log_msg(ERR, "> 1500: %.*s - %d",  nread, conn_caa->buf_in, nread);
+
+#ifdef DO_LEN_CHECK
+        if (nread > 1500) {
+            log_msg(ERR, "> 1500: %.*s - %d",  nread, conn_caa->buf_in, nread);
 //            abort_connection_caa(event_loop, conn_caa);
-//        }
+        }
+#endif
 
         // Feed input to HTTP parser
         size_t nparsed = http_parser_execute(&conn_caa->parser, &parser_settings,
@@ -235,10 +241,12 @@ int on_http_body(http_parser *parser, const char *at, size_t length) {
 
     conn_caa->len_req = data_len + DUBBO_HEADER_LEN;
 
-//    if (conn_caa->len_req > 1500) {
-//        log_msg(ERR, "Arg: %.*s - len: %d body: %d", arg_len, arg, arg_len, len_body);
+#ifdef DO_LEN_CHECK
+    if (conn_caa->len_req > 1500) {
+        log_msg(ERR, "Arg: %.*s - len: %d body: %d", arg_len, arg, arg_len, length);
 //        abort_connection_caa(conn_caa->event_loop, conn_caa);
-//    }
+    }
+#endif
 
     log_msg(DEBUG, "Current requestID: %d", cur_request_id);
     ++cur_request_id;
@@ -285,6 +293,7 @@ bool _write_to_local_provider(aeEventLoop *event_loop, int fd, void *privdata) {
     connection_caa_t *conn_caa = privdata;
     if (UNLIKELY(conn_caa->fd < 0)) {
         log_msg(WARN, "Connection closed for socket %d, ignore write_to_local_provider", fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         return true;
     }
 
@@ -321,6 +330,7 @@ void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, i
     connection_caa_t *conn_caa = privdata;
     if (UNLIKELY(conn_caa->fd < 0)) {
         log_msg(WARN, "Connection closed for socket %d, ignore read_from_local_provider", fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         return ;
     }
 
@@ -340,10 +350,17 @@ void read_from_local_provider(aeEventLoop *event_loop, int fd, void *privdata, i
                 log_msg(WARN, "Incomplete response: %.*s", nread, conn_caa->buf_resp);
                 return;
             }
+            if (conn_caa->buf_resp[DUBBO_HEADER_LEN] != '1') {
+                log_msg(WARN, "Not dubbo response: %.*s", conn_caa->nread_resp, conn_caa->buf_resp);
+                conn_caa->nread_resp = 0;
+                return;
+            }
 
-//            if (data_len > 100) {
-//                log_msg(ERR, "Dubbo data: %.*s", conn_caa->buf_resp, conn_caa->nread_resp);
-//            }
+#ifdef DO_LEN_CHECK
+            if (data_len > 100) {
+                log_msg(ERR, "Dubbo data: %.*s", conn_caa->buf_resp, conn_caa->nread_resp);
+            }
+#endif
 
             // Write back to consumer agent
 //            if (UNLIKELY(!_write_to_consumer_agent(event_loop, conn_caa->fd, conn_caa))) {
@@ -376,6 +393,7 @@ bool _write_to_consumer_agent(aeEventLoop *event_loop, int fd, void *privdata) {
     connection_caa_t *conn_caa = privdata;
     if (UNLIKELY(conn_caa->fd < 0)) {
         log_msg(WARN, "Connection closed for socket %d, ignore write_to_consumer_agent", fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         return true;
     }
 

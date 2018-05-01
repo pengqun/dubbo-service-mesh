@@ -39,7 +39,21 @@ void init_log(char *logfile_name);
 
 #endif
 
-
 void _log_msg(int32_t type, const char *file, int32_t line, const char *format, ...);
+
+
+#ifdef DEBUG_THIS_FILE
+#define log_msg_r(type, format, ...) \
+    do { \
+        _log_msg_r(type, __FILE__, __LINE__, format, ##__VA_ARGS__); \
+    } while (0)
+#else
+#define log_msg_r(type, format, ...) \
+    do { \
+        if (type != DEBUG) _log_msg_r(type, __FILE__, __LINE__, format, ##__VA_ARGS__); \
+    } while (0)
+#endif
+
+void _log_msg_r(int32_t type, const char *file, int32_t line, const char *format, ...);
 
 #endif

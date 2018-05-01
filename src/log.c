@@ -208,3 +208,73 @@ void _log_msg(int32_t type, const char *file, int32_t  line, const char *format,
         exit(errno);
     }
 }
+
+
+/* re-entrant version */
+
+static inline void log_with_option_r(int32_t type, int32_t fpno, char *time,
+                                     const char *pos, const char *msg)
+{
+    if (log_conf[type][fpno].log_opt & LOG_OPT_TIME)
+        fprintf(log_output_fps[fpno], "%s  ", time);
+
+    if (log_conf[type][fpno].log_opt & LOG_OPT_BAR)
+        fprintf(log_output_fps[fpno], "[%s] ", log_type_str[type]);
+
+    fprintf(log_output_fps[fpno], "%s ", msg);
+
+    if (log_conf[type][fpno].log_opt & LOG_OPT_POS)
+        fprintf(log_output_fps[fpno], "(%s)", pos);
+
+    fprintf(log_output_fps[fpno], "\n");
+
+    return;
+}
+
+static inline void log_to_file_r(int32_t type, char *time, const char *pos,
+                                 const char *msg)
+{
+    if (log_conf[type][LOG_TO_STDOUT].log_flag)
+        log_with_option_r(type, LOG_TO_STDOUT, time, pos, msg);
+
+    if (log_conf[type][LOG_TO_STDERR].log_flag)
+        log_with_option_r(type, LOG_TO_STDERR, time, pos, msg);
+
+    if (log_conf[type][LOG_TO_LOGFILE].log_flag)
+        log_with_option_r(type, LOG_TO_LOGFILE, time, pos, msg);
+}
+
+void _log_msg_r(int32_t type, const char *file, int32_t  line, const char *format, ...)
+{
+    /* get time string */
+    struct tm local_time;
+    char time_str[32]   = {0};
+    time_t now = time(NULL);
+    localtime_r(&now, &local_time);
+    strftime(time_str, sizeof(time_str), "%e %b %T", &local_time);
+
+    /* get position string */
+    char pos_str[32]  = {0};
+    char line_str[16] = {0};
+    const int32_t pos_max_size = 16;
+
+    sprintf(line_str, "%i", line);
+    int32_t diff = strlen(file) + strlen(line_str) + 1 - pos_max_size;
+    if (diff > 0)
+        sprintf(pos_str, "%s:%i", file + diff, line);
+    else
+        sprintf(pos_str, "%s:%i", file, line);
+
+    /* put va_list into msg buffer */
+    char log_msg[1024] = {0};
+    va_list args;
+    va_start(args, format);
+    vsnprintf(log_msg, sizeof(log_msg), format, args);
+    va_end(args);
+
+    log_to_file_r(type, time_str, pos_str, log_msg);
+
+    if (type == FATAL) {
+        exit(errno);
+    }
+}
