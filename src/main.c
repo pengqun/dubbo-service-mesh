@@ -10,7 +10,8 @@
 #define NET_IP_STR_LEN 46
 
 // Adjustable params
-#define EV_MAX_SET_SIZE 4096
+//#define EV_MAX_SET_SIZE 4096
+#define EV_MAX_SET_SIZE 2048
 #define TCP_LISTEN_BACKLOG 40000
 #define MAX_ACCEPTS_PER_CALL 1
 
@@ -77,11 +78,7 @@ int main(int argc, char **argv) {
     log_msg(INFO, "Init log with dir %s", log_dir);
 
     init_signals();
-
-    init_debug();
-
-    signal(SIGINT, signal_handler);
-    signal(SIGSEGV, signal_handler);
+//    init_debug();
 
     setpriority(PRIO_PROCESS, 0, -20);
     
@@ -91,12 +88,12 @@ int main(int argc, char **argv) {
     log_msg(INFO, "Init etcd to host %s", etcd_host);
 
     if (agent_type == AGENT_CONSUMER) {
-//        do_fork();
+        do_fork();
         int listen_fd = do_listen(server_port);
         monitor_accepts(listen_fd);
         consumer_init();
     } else {
-//        do_fork();
+        do_fork();
         int listen_fd = do_listen(server_port);
         monitor_accepts(listen_fd);
         provider_init(server_port, dubbo_port);

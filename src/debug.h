@@ -1,5 +1,5 @@
-#ifndef __ICARE_DEBUG__
-#define __ICARE_DEBUG__
+#ifndef __DEBUG_H__
+#define __DEBUG_H__
 
 void init_debug();
 void dump_stack();

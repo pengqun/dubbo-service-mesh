@@ -1,7 +1,3 @@
-/*
- * Provide log facilty for iCare.
- */
-
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,7 +77,6 @@ void init_log(char *logfile_name)
 {
 #if 0 /* use log rotate to manage log file instead */
 
-    /* backup previous log file:  icare.log*/
     char command[1024];
     sprintf(command, "[ -f %s ] && cat %s >> %s.bak; > %s", logfile_name, 
             logfile_name, logfile_name, logfile_name);
