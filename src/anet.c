@@ -47,6 +47,7 @@
 #include <stdio.h>
 
 #include "anet.h"
+#include "log.h"
 
 static void anetSetError(char *err, const char *fmt, ...)
 {
@@ -438,6 +439,11 @@ int anetWrite(int fd, char *buf, int count)
 }
 
 static int anetListen(char *err, int s, struct sockaddr *sa, socklen_t len, int backlog) {
+    int optval = 1;
+    if (setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) < 0) {
+        log_msg(WARN, "Failed to set SO_REUSEPORT: %s", strerror(errno));
+    }
+
     if (bind(s,sa,len) == -1) {
         anetSetError(err, "bind: %s", strerror(errno));
         close(s);

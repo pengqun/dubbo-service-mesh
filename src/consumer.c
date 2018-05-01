@@ -1,8 +1,10 @@
 #include "consumer.h"
 
 // Adjustable params
-#define NUM_CONN_FOR_CONSUMER 2048
-#define NUM_CONN_PER_PROVIDER 1024
+#define NUM_CONN_FOR_CONSUMER 1024
+#define NUM_CONN_PER_PROVIDER 512
+//#define NUM_CONN_FOR_CONSUMER 512
+//#define NUM_CONN_PER_PROVIDER 256
 //#define LOAD_BALANCE_THRESHOLD 10
 
 static char neterr[256];
@@ -67,6 +69,11 @@ void consumer_http_handler(aeEventLoop *event_loop, int fd) {
 
 void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_ca_t *conn_ca = privdata;
+    if (UNLIKELY(conn_ca->fd < 0)) {
+        log_msg(WARN, "Connection closed for socket %d, ignore read_from_consumer", fd);
+        aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
+        return;
+    }
 
     ssize_t nread = read(fd, conn_ca->buf_in + conn_ca->nread_in,
                          sizeof(conn_ca->buf_in) - conn_ca->nread_in);
@@ -132,9 +139,10 @@ void read_from_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mas
         abort_connection_ca(event_loop, conn_ca);
 
     } else {
-        log_msg(DEBUG, "Consumer closed connection for socket %d", fd);
+        log_msg(INFO, "Consumer closed connection for socket %d", fd);
         aeDeleteFileEvent(event_loop, fd, AE_WRITABLE | AE_READABLE);
         PoolReturn(connection_ca_pool, conn_ca);
+        conn_ca->fd = -1;
         close(fd);
         log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_ca_pool->outstanding);
     }
@@ -146,6 +154,10 @@ void write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int 
 
 bool _write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata) {
     connection_ca_t *conn_ca = privdata;
+    if (UNLIKELY(conn_ca->fd < 0)) {
+        log_msg(WARN, "Connection closed for socket %d, ignore write_to_remote_agent", fd);
+        return true;
+    }
 
     ssize_t nwrite = write(fd, conn_ca->buf_in + conn_ca->nwrite_in,
                            (size_t) (conn_ca->nread_in - conn_ca->nwrite_in));
@@ -164,8 +176,8 @@ bool _write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata) {
 //            log_msg(WARN, "write_to_remote_agent would block");
 //            return false;
 //        }
-        if (UNLIKELY(errno == EAGAIN)) {
-            log_msg(WARN, "Got EAGAIN on write: %s", strerror(errno));
+        if (errno == EAGAIN) {
+            log_msg(WARN, "Got EAGAIN on write_to_remote_agent: %s", strerror(errno));
             return true;
         }
         log_msg(ERR, "Failed to write to remote agent: %s", strerror(errno));
@@ -176,6 +188,10 @@ bool _write_to_remote_agent(aeEventLoop *event_loop, int fd, void *privdata) {
 
 void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int mask) {
     connection_ca_t *conn_ca = privdata;
+    if (UNLIKELY(conn_ca->fd < 0)) {
+        log_msg(WARN, "Connection closed for socket %d, ignore read_from_remote_agent", fd);
+        return;
+    }
 
     ssize_t nread = read(fd, conn_ca->buf_out + conn_ca->nread_out,
                          sizeof(conn_ca->buf_out) - conn_ca->nread_out);
@@ -197,7 +213,7 @@ void read_from_remote_agent(aeEventLoop *event_loop, int fd, void *privdata, int
 //        }
 
     } else if (UNLIKELY(nread < 0)) {
-        if (UNLIKELY(errno == EAGAIN)) {
+        if (errno == EAGAIN) {
             log_msg(WARN, "Got EAGAIN on read_from_remote_agent: %s", strerror(errno));
             return;
         }
@@ -217,6 +233,10 @@ void write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata, int mask
 
 bool _write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata) {
     connection_ca_t *conn_ca = privdata;
+    if (UNLIKELY(conn_ca->fd < 0)) {
+        log_msg(WARN, "Connection closed for socket %d, ignore write_to_consumer", fd);
+        return true;
+    }
 
     ssize_t nwrite = write(fd, conn_ca->buf_out + conn_ca->nwrite_out,
                            (size_t) (conn_ca->nread_out - conn_ca->nwrite_out));
@@ -246,8 +266,8 @@ bool _write_to_consumer(aeEventLoop *event_loop, int fd, void *privdata) {
 //            log_msg(WARN, "write_to_consumer would block");
 //            return false;
 //        }
-        if (UNLIKELY(errno == EAGAIN)) {
-            log_msg(WARN, "Got EAGAIN on write: %s", strerror(errno));
+        if (errno == EAGAIN) {
+            log_msg(WARN, "Got EAGAIN on write_to_consumer: %s", strerror(errno));
         }
         log_msg(ERR, "Failed to write to consumer: %s", strerror(errno));
         abort_connection_ca(event_loop, conn_ca);
@@ -309,32 +329,36 @@ int init_connection_apa(void *elem, void *data) {
 }
 
 void cleanup_connection_apa(void *elem) {
-    log_msg(DEBUG, "Cleanup connection to remote agent");
+    log_msg(INFO, "Cleanup connection to remote agent");
     connection_apa_t *conn_apa = elem;
     if (conn_apa->fd > 0) {
+        log_msg(WARN, "Abort connection to provider agent with socket: %d", conn_apa->fd);
         close(conn_apa->fd);
+        conn_apa->fd = -1;
     }
 }
 
 void abort_connection_ca(aeEventLoop *event_loop, connection_ca_t *conn_ca) {
     // Dump data
-//    log_msg(WARN, "Conn ca: nread_in - %d, nwrite_in - %d, nread_out - %d, nwrite_out - %d",
-//            conn_ca->nread_in, conn_ca->nwrite_in, conn_ca->nread_out, conn_ca->nwrite_out);
+    log_msg(WARN, "Conn ca: nread_in - %d, nwrite_in - %d, nread_out - %d, nwrite_out - %d",
+            conn_ca->nread_in, conn_ca->nwrite_in, conn_ca->nread_out, conn_ca->nwrite_out);
 //    log_msg(WARN, "Conn ca data: buf_in - %.*s, buf_out - %.*s",
 //            conn_ca->nread_in, conn_ca->buf_in, conn_ca->nread_out, conn_ca->buf_out);
-//
-//    aeDeleteFileEvent(event_loop, conn_ca->fd, AE_WRITABLE | AE_READABLE);
-//    close(conn_ca->fd);
-//    log_msg(ERR, "Abort connection to consumer with socket: %d", conn_ca->fd);
-//
-//    connection_apa_t *conn_apa = conn_ca->conn_apa;
-//    if (conn_apa != NULL) {
-//        aeDeleteFileEvent(event_loop, conn_apa->fd, AE_WRITABLE | AE_READABLE);
-//        close(conn_apa->fd);
-////    PoolReturn(conn_apa->endpoint->pool, conn_apa);
-//        log_msg(ERR, "Abort connection to provider agent with socket: %d", conn_apa->fd);
-//    }
-//
-//    PoolReturn(connection_ca_pool, conn_ca);
-//    log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_ca_pool->outstanding);
+
+    log_msg(ERR, "Abort connection to consumer with socket: %d", conn_ca->fd);
+    aeDeleteFileEvent(event_loop, conn_ca->fd, AE_WRITABLE | AE_READABLE);
+    close(conn_ca->fd);
+    conn_ca->fd = -1;
+
+    connection_apa_t *conn_apa = conn_ca->conn_apa;
+    if (conn_apa != NULL) {
+        log_msg(ERR, "Abort connection to provider agent with socket: %d", conn_apa->fd);
+        aeDeleteFileEvent(event_loop, conn_apa->fd, AE_WRITABLE | AE_READABLE);
+        close(conn_apa->fd);
+        conn_apa->fd = -1;
+//    PoolReturn(conn_apa->endpoint->pool, conn_apa);
+    }
+
+    PoolReturn(connection_ca_pool, conn_ca);
+    log_msg(DEBUG, "Returned connection object to pool, active: %d", connection_ca_pool->outstanding);
 }

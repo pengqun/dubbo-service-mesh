@@ -145,7 +145,7 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
     aeFileEvent *fe = &eventLoop->events[fd];
 
     if (aeApiAddEvent(eventLoop, fd, mask) == -1) {
-        log_msg(ERR, "aeCreateFileEvent aeApiAddEvent for %d", fd);
+        log_msg(ERR, "Failed to do aeApiAddEvent for %d: %s", fd, strerror(errno));
         return AE_ERR;
     }
     fe->mask |= mask;

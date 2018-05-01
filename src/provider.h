@@ -20,9 +20,6 @@ typedef struct connection_caa {
     char buf_in[PROVIDER_HTTP_REQ_BUF_SIZE];
     size_t nread_in;
 
-    char *body;
-    size_t len_body;
-
     char buf_req[PROVIDER_DUBBO_REQ_BUF_SIZE];
     int len_req;
     size_t nwrite_req;

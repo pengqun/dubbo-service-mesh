@@ -10,7 +10,7 @@
 
 // Adjustable params
 #define EV_MAX_SET_SIZE 4096
-#define TCP_LISTEN_BACKLOG 40000
+#define TCP_LISTEN_BACKLOG 1024
 #define MAX_ACCEPTS_PER_CALL 1
 
 
@@ -22,14 +22,12 @@ static char neterr[256];
 
 
 void signal_handler(int sig) ;
-void start_http_server(int server_port) ;
+int do_listen(int server_port) ;
 void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) ;
 
 //void set_cpu_affinity();
-
-#ifdef MICRO_HTTP
-void start_micro_http_server(int server_port) ;
-#endif
+void do_fork() ;
+void monitor_accepts(int listen_fd) ;
 
 int main(int argc, char **argv) {
     int c;
@@ -77,15 +75,29 @@ int main(int argc, char **argv) {
     log_msg(INFO, "Init etcd to host %s", etcd_host);
 
     if (agent_type == AGENT_CONSUMER) {
+        do_fork();
+        int listen_fd = do_listen(server_port);
+        prctl(PR_SET_NAME, "agent-consumer", 0, 0, 0);
+        monitor_accepts(listen_fd);
         consumer_init();
     } else {
+        do_fork();
+        int listen_fd = do_listen(server_port);
+        prctl(PR_SET_NAME, "agent-provider", 0, 0, 0);
+        monitor_accepts(listen_fd);
         provider_init(server_port, dubbo_port);
     }
 
-#ifdef MICRO_HTTP
-    start_micro_http_server(server_port);
-#else
-    start_http_server(server_port);
+#ifdef PROFILER
+    ProfilerStart("/root/logs/iprofile");
+    log_msg(INFO, "Start profiler");
+#endif
+    aeMain(the_event_loop);
+
+#ifdef PROFILER
+    ProfilerStop();
+    log_msg(INFO, "Stop profiler..");
+    sleep(60);
 #endif
 
     if (agent_type == AGENT_CONSUMER) {
@@ -103,32 +115,24 @@ void signal_handler(int sig) {
     aeStop(the_event_loop);
 }
 
-void start_http_server(int server_port) {
-    the_event_loop = aeCreateEventLoop(EV_MAX_SET_SIZE);
-
+int do_listen(int server_port) {
     int listen_fd = anetTcpServer(neterr, server_port, NULL, TCP_LISTEN_BACKLOG);
     if (listen_fd == ANET_ERR) {
         log_msg(ERR, "Failed to create listening socket: %s", neterr);
         exit(EXIT_FAILURE);
     }
     anetNonBlock(NULL, listen_fd);
+    return listen_fd;
+}
+
+void monitor_accepts(int listen_fd) {
+    the_event_loop = aeCreateEventLoop(EV_MAX_SET_SIZE);
 
     int ret = aeCreateFileEvent(the_event_loop, listen_fd, AE_READABLE, accept_tcp_handler, NULL);
     if (ret == ANET_ERR) {
         log_msg(ERR, "Failed to create file event for accept_tcp_handler: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
-
-#ifdef PROFILER
-    ProfilerStart("/root/logs/iprofile");
-    log_msg(INFO, "Start profiler");
-#endif
-    aeMain(the_event_loop);
-
-#ifdef PROFILER
-    ProfilerStop();
-    log_msg(INFO, "Stop profiler");
-#endif
 }
 
 void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -143,7 +147,7 @@ void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
             }
             return;
         }
-        log_msg(DEBUG, "Accept client connection: %s:%d with socket %d", client_ip, client_port, client_fd);
+//        log_msg(INFO, "Accept client connection: %s:%d with socket %d", client_ip, client_port, client_fd);
 
         anetNonBlock(NULL, client_fd);
         anetEnableTcpNoDelay(NULL, client_fd);
@@ -156,46 +160,30 @@ void accept_tcp_handler(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 }
 
-//void set_cpu_affinity() {
-//    int num_cpu = (int) sysconf(_SC_NPROCESSORS_CONF);
-//    log_msg(INFO, "Number of CPUs: ", num_cpu);
-//
-//    cpu_set_t mask;
-//    CPU_ZERO(&mask);
-//    CPU_SET(num_cpu - 1, &mask);
-//
-//    if (sched_setaffinity(0, sizeof(mask), &mask) == -1) {
-//        log_msg(WARN, "Set CPU affinity failed: %s\n", strerror(errno));
-//    }
-//}
-
-#ifdef MICRO_HTTP
-int access_handler(void *cls, struct MHD_Connection *connection,
-                   const char *url, const char *method, const char *version,
-                   const char *upload_data, size_t *upload_data_size, void **con_cl) {
-    static int dummy;
-    const char * page = "MICRO";
-    struct MHD_Response * response;
-    int ret;
-    if (&dummy != *con_cl) {
-        *con_cl = &dummy;
-        return MHD_YES;
+void do_fork() {
+    pid_t pid = fork();
+    if (pid == -1) {
+        log_msg(ERR, "Fork error: %s", strerror(errno));
+        exit(EXIT_FAILURE);
     }
-    *con_cl = NULL;
-    response = MHD_create_response_from_buffer(strlen(page), (void*) page, MHD_RESPMEM_PERSISTENT);
-    ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-    MHD_destroy_response(response);
-    return ret;
+    if (pid == 0) {
+        log_msg(INFO, "In child process");
+    } else {
+        log_msg(INFO, "In parent process, forked child with PID %d", pid);
+    }
 }
 
-void start_micro_http_server(int server_port) {
-    struct MHD_Daemon *d = MHD_start_daemon(MHD_USE_AUTO | MHD_USE_INTERNAL_POLLING_THREAD,
-            (uint16_t) server_port, NULL, NULL, &access_handler, NULL, MHD_OPTION_END);
-    if (d == NULL) {
-        log_msg(FATAL, "Failed to start http server");
-        exit(-1);
+#if 0
+void set_cpu_affinity() {
+    int num_cpu = (int) sysconf(_SC_NPROCESSORS_CONF);
+    log_msg(INFO, "Number of CPUs: ", num_cpu);
+
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(num_cpu - 1, &mask);
+
+    if (sched_setaffinity(0, sizeof(mask), &mask) == -1) {
+        log_msg(WARN, "Set CPU affinity failed: %s\n", strerror(errno));
     }
-    (void) getc (stdin);
-    MHD_stop_daemon(d);
 }
 #endif

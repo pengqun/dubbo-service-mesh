@@ -19,8 +19,10 @@ RUN make clean && make
 # Runner container
 FROM registry.cn-hangzhou.aliyuncs.com/tianchi4-docker/debian-jdk8
 
+#COPY sources.list /etc/apt
+
 RUN apt-get update
-#RUN apt-get install -y net-tools nc
+#RUN apt-get install -y net-tools netcat procps google-perftools binutils
 #RUN apt-get install -y libcurl4-openssl-dev libjansson-dev
 RUN apt-get install -y libcurl4-openssl-dev libjansson-dev libgoogle-perftools-dev
 

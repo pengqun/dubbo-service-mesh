@@ -6,10 +6,7 @@
 #include <getopt.h>
 #include <signal.h>
 #include <sys/resource.h>
-
-#ifdef MICRO_HTTP
-#include <microhttpd.h>
-#endif
+#include <sys/prctl.h>
 
 #ifdef PROFILER
 #include <gperftools/profiler.h>

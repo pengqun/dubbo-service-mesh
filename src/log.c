@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include <sys/time.h>
 #include <time.h>
+#include <unistd.h>
 #include "log.h"
 
 /*
@@ -119,7 +120,8 @@ static inline void log_with_option(int32_t type, int32_t fpno, char *time,
     flockfile(log_output_fps[fpno]);
     
     if (log_conf[type][fpno].log_opt & LOG_OPT_TIME) 
-        fprintf(log_output_fps[fpno], "%s  ", time); 
+//        fprintf(log_output_fps[fpno], "%s  ", time);
+        fprintf(log_output_fps[fpno], "%s - [%d]  ", time, getpid());
 
     if (log_conf[type][fpno].log_opt & LOG_OPT_BAR)
         fprintf(log_output_fps[fpno], "[%s] ", log_type_str[type]);
@@ -127,9 +129,9 @@ static inline void log_with_option(int32_t type, int32_t fpno, char *time,
     fprintf(log_output_fps[fpno], "%s ", msg); 
 
     if (log_conf[type][fpno].log_opt & LOG_OPT_POS) 
-        fprintf(log_output_fps[fpno], "(%s)", pos); 
+        fprintf(log_output_fps[fpno], "(%s)", pos);
 
-    fprintf(log_output_fps[fpno], "\n"); 
+    fprintf(log_output_fps[fpno], "\n");
 
     fflush(log_output_fps[fpno]);
 

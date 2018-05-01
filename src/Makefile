@@ -1,8 +1,7 @@
 
-#PROFILE := true
 RELEASE := true
-NO_LOG := true
-#MICRO_HTTP := true
+#NO_LOG := true
+#PROFILE := true
 
 ODIR := ../out
 #DEPDIR := ../deps
@@ -26,16 +25,13 @@ endif
 ifdef NO_LOG
 CFLAGS += -DNO_LOG
 endif
-ifdef MICRO_HTTP
-CFLAGS += -DMICRO_HTTP
-endif
 
 ifdef RELEASE
 #CFLAGS += -Ofast
 CFLAGS += -O2
 else
-CFLAGS += -O0
-#CFLAGS += -O0 -g
+#CFLAGS += -O0
+CFLAGS += -O0 -g
 #LDFLAGS += -rdynamic
 endif
 
