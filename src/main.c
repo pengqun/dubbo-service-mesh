@@ -88,12 +88,12 @@ int main(int argc, char **argv) {
     log_msg(INFO, "Init etcd to host %s", etcd_host);
 
     if (agent_type == AGENT_CONSUMER) {
-        do_fork();
+//        do_fork();
         int listen_fd = do_listen(server_port);
         monitor_accepts(listen_fd);
         consumer_init();
     } else {
-        do_fork();
+//        do_fork();
         int listen_fd = do_listen(server_port);
         monitor_accepts(listen_fd);
         provider_init(server_port, dubbo_port);

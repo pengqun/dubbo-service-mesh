@@ -11,6 +11,7 @@
 // Adjustable params
 #define CONSUMER_HTTP_REQ_BUF_SIZE 2048
 #define CONSUMER_HTTP_RESP_BUF_SIZE 256
+#define LATENCY_AWARE
 
 // Consumer <-> Agent
 typedef struct connection_ca {
@@ -31,15 +32,19 @@ typedef struct connection_ca {
 typedef struct connection_apa {
     int fd;
     struct endpoint *endpoint;
-//    long req_start;
+#ifdef LATENCY_AWARE
+    long req_start;
+#endif
 } connection_apa_t;
 
 typedef struct endpoint {
     char *ip;
     int port;
-//    long total_ms;
-//    int num_reqs;
-//    int score;
+#ifdef LATENCY_AWARE
+    long total_ms;
+    int num_reqs;
+    int score;
+#endif
     Pool *conn_pool; // pool of connection_apa
 } endpoint_t;
 

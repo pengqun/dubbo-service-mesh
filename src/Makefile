@@ -10,8 +10,8 @@ BIN  := $(ODIR)/mesh-agent
 SRC  := $(wildcard *.c)
 OBJ  := $(patsubst %.c,$(ODIR)/%.o,$(SRC))
 
-LIBS := -lcurl -lpthread -ljansson
-#LIBS := -lcurl -lpthread -ltcmalloc -ljansson
+#LIBS := -lcurl -lpthread -ljansson
+LIBS := -lcurl -lpthread -ltcmalloc -ljansson
 #STATIC_LIBS := $(DEPDIR)/jansson-2.11/src/.libs/libjansson.a $(DEPDIR)/libmicrohttpd-0.9.59/src/microhttpd/.libs/libmicrohttpd.a
 
 #CFLAGS  += -I/usr/local/include -I$(DEPDIR)/jansson-2.11/src -I$(DEPDIR)/libmicrohttpd-0.9.59/src/include
@@ -28,7 +28,7 @@ endif
 
 ifdef RELEASE
 #CFLAGS += -Ofast
-CFLAGS += -O2
+CFLAGS += -O2 -g
 else
 #CFLAGS += -O0
 CFLAGS += -O0 -g
