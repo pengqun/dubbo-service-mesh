@@ -2,13 +2,11 @@
 
 ## 赛题简介
 
-![](assets/2024-01-26-15-01-45-image.png)
-
-
+![](assets/problem.png)
 
 ## 实现方案
 
-![](assets/2024-01-26-15-02-22-image.png)
+![](assets/solution.png)
 
 其中用到的一些技术点：
 
@@ -21,7 +19,7 @@
 
 ## 优化历程
 
-![](assets/2024-01-26-15-02-39-image.png)
+![](assets/optimization.png)
 
 一些效果还可以的优化：
 
@@ -29,7 +27,7 @@
 - 用户空间**零拷贝**（zero-copy）：万能的C指针
 - **资源池化** + **预分配**：内存对象、socket连接
 - 透明TCP转发：consumer agent 不做HTTP层解析
-- 混合负载均衡：least-loaded + min-latency + threshold 
+- 混合负载均衡：least-loaded + min-latency + threshold
 
 一些效果不太行的优化（很可能只是我的使用姿势不对）：
 
